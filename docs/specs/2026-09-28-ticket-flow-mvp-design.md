@@ -216,7 +216,7 @@ Todas as rotas têm prefixo `/api`. A documentação fica no Swagger UI, em `/sw
   - % de SLA cumprido
   - tempo médio de resolução: `resolvedAt − createdAt`, em horas corridas, contando as pausas
   - resolvidos por atendente
-  - chamados por categoria
+- **Abertos no período (chamados com `createdAt` no intervalo):** contagem por categoria.
 - **Série diária:** abertos × resolvidos por dia no período, agrupados no fuso `app.zone`.
 
 ## 9. Frontend
@@ -260,7 +260,7 @@ Todas as rotas têm prefixo `/api`. A documentação fica no Swagger UI, em `/sw
 **Dados:**
 
 - O **Flyway** cria o schema e as categorias.
-- O `DemoDataSeeder` só roda no profile `demo`. Ele cria os três usuários demo (`demo = true`) e cerca de 30 chamados com datas **relativas a agora**, para que sempre existam chamados vencidos, em risco e no prazo.
+- O `DemoDataSeeder` só roda no profile `demo`. Ele cria cinco usuários demo (`demo = true`): as três contas dos botões de login (solicitante, atendente e gestor), mais um solicitante e um atendente extras, para o painel ter dados por atendente. Também cria cerca de 30 chamados com datas **relativas a agora**, para que sempre existam chamados vencidos, em risco e no prazo.
 
 **Reset diário** **[NOVO]:**
 
@@ -280,7 +280,7 @@ ticket-flow/
 └── README.md
 ```
 
-- **[NOVO]** O `.gitignore` atual é o modelo padrão de Java. Ele será ajustado para ignorar `target/`, `node_modules/`, `dist/`, `.env` e arquivos de IDE. A regra `*.jar` terá uma exceção para `.mvn/wrapper/maven-wrapper.jar`.
+- **[NOVO]** O `.gitignore` atual é o modelo padrão de Java. Ele será ajustado para ignorar `target/`, `node_modules/`, `dist/`, `.env` e arquivos de IDE. (O Maven Wrapper atual funciona só com scripts, sem `maven-wrapper.jar`, então a regra `*.jar` não atrapalha.)
 - **Dia a dia:** `docker compose up db`, com backend e frontend rodando localmente com hot reload.
 - **Tudo junto:** `docker compose up`.
 
