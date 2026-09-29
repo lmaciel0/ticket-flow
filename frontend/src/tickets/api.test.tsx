@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
 import type { Ticket } from '../api/types'
 import { mockApi, sentBody } from '../test/render'
-import { ticketKeys, useChangeStatus } from './api'
+import { ticketKeys, useAddComment, useChangeStatus } from './api'
 
 const ticket: Ticket = {
   id: 7,
@@ -48,6 +48,18 @@ describe('ticket mutations keep the screen in sync with the version', () => {
       status: 'WAITING_REQUESTER',
       version: 4,
     })
+  })
+
+  it('reloads the ticket after a comment, because a comment may resume it (new status and version)', async () => {
+    mockApi({
+      'POST /tickets/7/comments': [201, { id: 1, text: 'Segue o print', author: { id: 1, name: 'Sol' }, createdAt: '' }],
+    })
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAddComment(7), { wrapper })
+
+    await act(() => result.current.mutateAsync('Segue o print'))
+
+    expect(queryClient.getQueryState(ticketKeys.detail(7))?.isInvalidated).toBe(true)
   })
 
   it('reloads the ticket on 409, when someone else changed it first', async () => {

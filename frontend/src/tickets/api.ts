@@ -1,6 +1,16 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
-import type { Category, Page, Priority, Ticket, TicketStatus, UserSummary } from '../api/types'
+import type {
+  Attachment,
+  Category,
+  HistoryEntry,
+  Page,
+  Priority,
+  Ticket,
+  TicketComment,
+  TicketStatus,
+  UserSummary,
+} from '../api/types'
 import { type TicketFilters, toApiQuery } from './filters'
 
 /**
@@ -99,4 +109,53 @@ export function useUpdateTicket(ticketId: number) {
   return useTicketChange(ticketId, (body: { priority?: Priority; categoryId?: number; version: number }) =>
     api.patch<Ticket>(`/tickets/${ticketId}`, body),
   )
+}
+
+export function useComments(ticketId: number) {
+  return useQuery({
+    queryKey: ticketKeys.comments(ticketId),
+    queryFn: () => api.get<TicketComment[]>(`/tickets/${ticketId}/comments`),
+  })
+}
+
+/**
+ * A comment returns only the comment, but it may have changed the ticket: when the requester
+ * answers a ticket waiting for them, the backend moves it back to "in progress" (new status and
+ * new version). So we reload the whole ticket: detail, comments and history.
+ */
+export function useAddComment(ticketId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (text: string) => api.post<TicketComment>(`/tickets/${ticketId}/comments`, { text }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.lists() })
+    },
+  })
+}
+
+export function useAttachments(ticketId: number) {
+  return useQuery({
+    queryKey: ticketKeys.attachments(ticketId),
+    queryFn: () => api.get<Attachment[]>(`/tickets/${ticketId}/attachments`),
+  })
+}
+
+export function useUploadAttachment(ticketId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post<Attachment>(`/tickets/${ticketId}/attachments`, form)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) }),
+  })
+}
+
+export function useHistory(ticketId: number) {
+  return useQuery({
+    queryKey: ticketKeys.history(ticketId),
+    queryFn: () => api.get<HistoryEntry[]>(`/tickets/${ticketId}/history`),
+  })
 }
