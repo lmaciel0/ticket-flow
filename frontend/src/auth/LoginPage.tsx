@@ -51,8 +51,8 @@ export function LoginPage() {
           ))}
         </SimpleGrid>
         <Text size="xs" c="dimmed">
-          Os dados da demonstração são reiniciados diariamente. O primeiro acesso do dia pode levar até um minuto,
-          enquanto o servidor acorda.
+          Os dados da demonstração são reiniciados diariamente. Se o servidor estava dormindo (15 minutos sem uso),
+          o primeiro acesso pode levar cerca de um minuto.
         </Text>
 
         <Divider label="ou entre com e-mail e senha" labelPosition="center" />

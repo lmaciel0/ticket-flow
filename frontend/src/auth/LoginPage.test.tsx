@@ -32,6 +32,14 @@ describe('LoginPage', () => {
     expect(screen.getByText(/reiniciados diariamente/)).toBeInTheDocument()
   })
 
+  it('explains the wake-up wait after any idle time, not only on the first access of the day', () => {
+    renderRoutes(routes, '/login')
+
+    const hint = screen.getByText(/pode levar cerca de um minuto/)
+    expect(hint).toHaveTextContent(/estava dormindo/)
+    expect(hint).not.toHaveTextContent(/do dia/)
+  })
+
   it('shows the API message on a wrong password and stays on the page', async () => {
     mockApi({ 'POST /auth/login': [401, { status: 401, detail: 'E-mail ou senha inválidos.' }] })
     const { user } = renderRoutes(routes, '/login')
