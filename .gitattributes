@@ -1,0 +1,13 @@
+# Text files are stored with LF. Shell scripts such as mvnw break in Linux (CI, Docker) with CRLF.
+* text=auto eol=lf
+
+# Windows scripts keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files are never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.docx binary
