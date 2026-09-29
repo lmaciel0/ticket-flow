@@ -117,9 +117,9 @@ Para reproduzir:
 2. No [Render](https://render.com), crie um Blueprint apontando para este repositório e preencha as variáveis pedidas:
    - `DB_URL`: `jdbc:postgresql://<host>/<banco>?sslmode=require`
    - `DB_USER` e `DB_PASSWORD`: do Neon.
-   - `CORS_ALLOWED_ORIGINS`: a URL do site (`https://ticket-flow-web.onrender.com`).
-   - `VITE_API_URL`: a URL da API (`https://ticket-flow-api.onrender.com`).
-3. Se o Render atribuir URLs diferentes (quando o nome já existe, ele acrescenta um sufixo), corrija `CORS_ALLOWED_ORIGINS` e `VITE_API_URL` no painel e faça um novo deploy.
+   - `CORS_ALLOWED_ORIGINS`: a URL do site (nesta demo, `https://ticket-flow-web.onrender.com`).
+   - `VITE_API_URL`: a URL da API (nesta demo, `https://ticket-flow-api-a15n.onrender.com`).
+3. Confira as URLs que o Render atribuiu: quando o nome já existe, ele acrescenta um sufixo (foi o que aconteceu com a API desta demo). Se forem diferentes das que você digitou, corrija `CORS_ALLOWED_ORIGINS` e `VITE_API_URL` no painel e faça um novo deploy do site, porque a URL da API fica embutida no JavaScript.
 
 O `JWT_SECRET` é gerado pelo próprio Render. Nenhum segredo fica no repositório.
 
