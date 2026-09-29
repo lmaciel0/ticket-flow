@@ -1,6 +1,6 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { Category, Page, Ticket } from '../api/types'
+import type { Category, Page, Priority, Ticket } from '../api/types'
 import { type TicketFilters, toApiQuery } from './filters'
 
 /**
@@ -30,5 +30,21 @@ export function useCategories() {
     queryKey: ['categories'],
     queryFn: () => api.get<Category[]>('/categories'),
     staleTime: Infinity, // seeded by a migration: they do not change while the app runs
+  })
+}
+
+export interface NewTicket {
+  title: string
+  description: string
+  priority: Priority
+  categoryId: number
+}
+
+export function useCreateTicket() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ticket: NewTicket) => api.post<Ticket>('/tickets', ticket),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketKeys.lists() }),
+    meta: { inlineError: true },
   })
 }

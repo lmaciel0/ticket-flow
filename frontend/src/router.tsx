@@ -3,6 +3,7 @@ import { GuestOnly, RequireAuth } from './auth/guards'
 import { LoginPage } from './auth/LoginPage'
 import { RegisterPage } from './auth/RegisterPage'
 import { AppLayout } from './layout/AppLayout'
+import { NewTicketPage } from './tickets/NewTicketPage'
 import { TicketListPage } from './tickets/TicketListPage'
 
 export const routes: RouteObject[] = [
@@ -18,7 +19,10 @@ export const routes: RouteObject[] = [
     children: [
       {
         element: <AppLayout />,
-        children: [{ path: '/tickets', element: <TicketListPage /> }],
+        children: [
+          { path: '/tickets', element: <TicketListPage /> },
+          { path: '/tickets/new', element: <NewTicketPage /> },
+        ],
       },
     ],
   },
