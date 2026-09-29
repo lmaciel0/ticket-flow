@@ -52,6 +52,19 @@ describe('api client', () => {
     expect(new Headers(init?.headers).has('Content-Type')).toBe(false)
   })
 
+  it('never sends the stored token to login or sign-up (Spring answers 401 to a dead token even there)', async () => {
+    tokenStorage.set('token-from-yesterday')
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(200, { token: 'new', user: {} }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.post('/auth/login', { email: 'a@b.c', password: 'demo1234' })
+    await api.post('/auth/register', { name: 'A', email: 'a@b.c', password: 'demo1234' })
+
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+    }
+  })
+
   it('turns a ProblemDetail into an ApiError with the message and the field errors', async () => {
     mockFetch(jsonResponse(400, {
       status: 400,

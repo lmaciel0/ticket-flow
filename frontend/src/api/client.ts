@@ -1,5 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
-const TOKEN_KEY = 'ticketflow.token'
+export const TOKEN_KEY = 'ticketflow.token'
 
 const FALLBACK_MESSAGES: Record<number, string> = {
   0: 'Não foi possível falar com o servidor. Tente de novo em instantes.',
@@ -28,6 +28,10 @@ export const tokenStorage = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 }
 
+// Login and sign-up never carry a token: Spring rejects an invalid Bearer header even on public
+// routes, so a token left over from yesterday (demo reset) would make the login itself fail.
+const PUBLIC_PATHS = ['/auth/login', '/auth/register']
+
 let onUnauthorized: () => void = () => {}
 
 /** The auth layer registers here what to do when the session dies (clear state, go to login). */
@@ -53,7 +57,7 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
-  const token = tokenStorage.get()
+  const token = PUBLIC_PATHS.includes(path) ? null : tokenStorage.get()
   const headers = new Headers()
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)

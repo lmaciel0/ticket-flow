@@ -1,4 +1,5 @@
 import { Alert, Anchor, Badge, Button, Center, Group, Loader, Pagination, Stack, Table, Text, Title } from '@mantine/core'
+import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useCurrentUser } from '../auth/authContext'
 import { PRIORITY_COLORS, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from '../shared/labels'
@@ -12,6 +13,15 @@ export function TicketListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = parseFilters(searchParams)
   const tickets = useTickets(filters)
+  const lastPage = tickets.data?.totalPages ?? 0
+
+  // A page past the end (its last ticket was closed, or an old link was pasted): go to the last page.
+  useEffect(() => {
+    const current = parseFilters(searchParams)
+    if (lastPage > 0 && current.page > lastPage) {
+      setSearchParams(toSearchParams({ ...current, page: lastPage }), { replace: true })
+    }
+  }, [lastPage, searchParams, setSearchParams])
 
   // Changing any filter goes back to page 1; changing the page keeps the filters.
   function changeFilters(changes: Partial<TicketFilters>) {
@@ -35,7 +45,7 @@ export function TicketListPage() {
         </Center>
       )}
       {tickets.isError && <Alert color="red">{tickets.error.message}</Alert>}
-      {tickets.data && tickets.data.content.length === 0 && (
+      {tickets.data && tickets.data.totalElements === 0 && (
         <Text c="dimmed" py="xl" ta="center">
           Nenhum chamado encontrado com esses filtros.
         </Text>
