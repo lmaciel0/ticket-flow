@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api/client'
-import type { Category, Page, Priority, Ticket } from '../api/types'
+import { api, ApiError } from '../api/client'
+import type { Category, Page, Priority, Ticket, TicketStatus, UserSummary } from '../api/types'
 import { type TicketFilters, toApiQuery } from './filters'
 
 /**
@@ -25,11 +25,23 @@ export function useTickets(filters: TicketFilters) {
   })
 }
 
+export function useTicket(id: number) {
+  return useQuery({ queryKey: ticketKeys.detail(id), queryFn: () => api.get<Ticket>(`/tickets/${id}`) })
+}
+
 export function useCategories() {
   return useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get<Category[]>('/categories'),
     staleTime: Infinity, // seeded by a migration: they do not change while the app runs
+  })
+}
+
+export function useAssignableUsers(enabled: boolean) {
+  return useQuery({
+    queryKey: ['users', 'assignable'],
+    queryFn: () => api.get<UserSummary[]>('/users/assignable'),
+    enabled,
   })
 }
 
@@ -47,4 +59,44 @@ export function useCreateTicket() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ticketKeys.lists() }),
     meta: { inlineError: true },
   })
+}
+
+/**
+ * Every change to a ticket answers with the updated ticket (and its new version). We put it
+ * straight into the cache, so the next action on the same screen already sends the new version.
+ * On 409 (someone changed it first, or a rule refused it) we reload the ticket.
+ */
+function useTicketChange<Variables>(ticketId: number, request: (variables: Variables) => Promise<Ticket>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (ticket) => {
+      queryClient.setQueryData(ticketKeys.detail(ticketId), ticket)
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.history(ticketId) })
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.lists() })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
+      }
+    },
+  })
+}
+
+export function useChangeStatus(ticketId: number) {
+  return useTicketChange(ticketId, (body: { status: TicketStatus; version: number }) =>
+    api.post<Ticket>(`/tickets/${ticketId}/status`, body),
+  )
+}
+
+export function useAssignTicket(ticketId: number) {
+  return useTicketChange(ticketId, (body: { assigneeId: number; version: number }) =>
+    api.post<Ticket>(`/tickets/${ticketId}/assign`, body),
+  )
+}
+
+export function useUpdateTicket(ticketId: number) {
+  return useTicketChange(ticketId, (body: { priority?: Priority; categoryId?: number; version: number }) =>
+    api.patch<Ticket>(`/tickets/${ticketId}`, body),
+  )
 }
