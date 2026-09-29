@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+// Typed by hand in the Render dashboard: drop pasted spaces and the trailing slash, if any
+// ("https://api.example.com/" + "/api" would be a double slash).
+const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').trim().replace(/\/+$/, '')
 export const TOKEN_KEY = 'ticketflow.token'
 
 const FALLBACK_MESSAGES: Record<number, string> = {
