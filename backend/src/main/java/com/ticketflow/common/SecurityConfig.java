@@ -2,6 +2,7 @@ package com.ticketflow.common;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.ticketflow.auth.JwtProperties;
+import com.ticketflow.user.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.crypto.SecretKey;
@@ -9,18 +10,22 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -33,8 +38,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemAuthenticationEntryPoint entryPoint)
-            throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemAuthenticationEntryPoint entryPoint,
+            UserRepository users) throws Exception {
         http
                 // Stateless API with a Bearer token: there is no session cookie for CSRF to abuse.
                 .csrf(csrf -> csrf.disable())
@@ -46,7 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter(users)))
                         .authenticationEntryPoint(entryPoint))
                 .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(entryPoint));
         return http.build();
@@ -79,14 +84,23 @@ public class SecurityConfig {
         return source;
     }
 
-    /** Turns the "role" claim (e.g. MANAGER) into the authority ROLE_MANAGER used by @PreAuthorize. */
-    private JwtAuthenticationConverter jwtAuthenticationConverter() {
+    /**
+     * Turns the "role" claim (e.g. MANAGER) into the authority ROLE_MANAGER used by @PreAuthorize.
+     * It also rejects tokens whose user no longer exists (the demo reset deletes users): one
+     * primary-key lookup per request, so an old token gets 401 everywhere instead of stale data.
+     */
+    private Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter(UserRepository users) {
         JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
         authorities.setAuthoritiesClaimName("role");
         authorities.setAuthorityPrefix("ROLE_");
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
-        return converter;
+        return jwt -> {
+            if (!users.existsById(Long.valueOf(jwt.getSubject()))) {
+                throw new InvalidBearerTokenException("User no longer exists");
+            }
+            return converter.convert(jwt);
+        };
     }
 
     private static SecretKey secretKey(JwtProperties properties) {

@@ -1,0 +1,5 @@
+# Public demo (deployed). No fallback: the app refuses to start without JWT_SECRET,
+# so the development secret committed in application.yml can never sign real tokens.
+app:
+  jwt:
+    secret: ${JWT_SECRET}

@@ -103,4 +103,24 @@ class AuthApiTest extends IntegrationTest {
         mvc.perform(get("/api/auth/me").header("Authorization", token))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void tokenOfDeletedUserIsRejectedOnReadEndpointsToo() throws Exception {
+        User ghost = createUser("Ghost", Role.MANAGER);
+        String token = bearer(ghost);
+        userRepository.delete(ghost);
+
+        mvc.perform(get("/api/tickets").header("Authorization", token))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/categories").header("Authorization", token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void swaggerDocumentsBearerAuthentication() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.security[0].bearerAuth").exists());
+    }
 }
