@@ -41,6 +41,17 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://ticket-flow-api.onrender.com/api/categories')
   })
 
+  it('ignores spaces and line breaks pasted around VITE_API_URL', async () => {
+    vi.stubEnv('VITE_API_URL', ' https://ticket-flow-api.onrender.com/ \n')
+    vi.resetModules() // the URL is read when the module loads
+    const fresh = await import('./client')
+    const fetchMock = mockFetch(jsonResponse(200, []))
+
+    await fresh.api.get('/categories')
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://ticket-flow-api.onrender.com/api/categories')
+  })
+
   it('sends JSON bodies with the JSON content type', async () => {
     const fetchMock = mockFetch(jsonResponse(201, { id: 7 }))
 
