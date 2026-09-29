@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
+
+// findBy*/waitFor give up after 1 s by default: too short when the whole suite runs in parallel.
+configure({ asyncUtilTimeout: 5_000 })
 
 // Without Vitest globals, Testing Library cannot register its own cleanup: we do it here.
 afterEach(() => {

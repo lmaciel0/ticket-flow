@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+// Without the trailing slash, if any: "https://api.example.com/" + "/api" would be a double slash.
+const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
 export const TOKEN_KEY = 'ticketflow.token'
 
 const FALLBACK_MESSAGES: Record<number, string> = {
