@@ -27,7 +27,14 @@ export const routes: RouteObject[] = [
           { path: '/tickets/:id', element: <TicketDetailPage /> },
           {
             element: <RequireAuth roles={['MANAGER']} />,
-            children: [{ path: '/users', element: <UsersPage /> }],
+            children: [
+              { path: '/users', element: <UsersPage /> },
+              {
+                path: '/dashboard',
+                // Code splitting: the charts library is only downloaded when a manager opens the dashboard.
+                lazy: () => import('./dashboard/DashboardPage').then((module) => ({ Component: module.DashboardPage })),
+              },
+            ],
           },
         ],
       },

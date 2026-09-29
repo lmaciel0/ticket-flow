@@ -4,6 +4,11 @@ import { defineConfig } from 'vitest/config'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // Mantine + React are ~700 kB (~220 kB gzip) in the main chunk; the charts are split into
+    // their own chunk (lazy /dashboard route). The default warning starts at 500 kB.
+    chunkSizeWarningLimit: 800,
+  },
   server: {
     port: 5173,
     strictPort: true,
