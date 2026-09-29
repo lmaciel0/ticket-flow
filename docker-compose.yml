@@ -15,5 +15,20 @@ services:
       timeout: 3s
       retries: 10
 
+  backend:
+    build: ./backend
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/ticketflow
+      DB_USER: ticketflow
+      DB_PASSWORD: ticketflow
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-0123456789}
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      SPRING_PROFILES_ACTIVE: demo
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   db-data:
