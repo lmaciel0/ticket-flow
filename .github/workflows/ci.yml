@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (build + tests)
+    runs-on: ubuntu-latest
+    env:
+      # Same time zone as the team machines, so time zone bugs show up here too.
+      TZ: America/Sao_Paulo
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build and test
+        run: ./mvnw -B verify
