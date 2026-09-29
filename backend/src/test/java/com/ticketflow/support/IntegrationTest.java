@@ -1,7 +1,10 @@
 package com.ticketflow.support;
 
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.ticketflow.auth.TokenService;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
@@ -16,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -89,5 +93,28 @@ public abstract class IntegrationTest {
 
     protected String bearer(User user) {
         return "Bearer " + tokenService.issue(user);
+    }
+
+    protected long categoryId(String name) {
+        return jdbc.queryForObject("SELECT id FROM categories WHERE name = ?", Long.class, name);
+    }
+
+    /** Creates a ticket through the API, as the given user, and returns its id. */
+    protected long createTicket(User requester, String title, String priority) throws Exception {
+        String body = mvc.perform(post("/api/tickets")
+                        .header("Authorization", bearer(requester))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "%s", "description": "Detalhes do problema", "priority": "%s",
+                                 "categoryId": %d}
+                                """.formatted(title, priority, categoryId("Hardware"))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(body, "$.id")).longValue();
+    }
+
+    /** Reads a numeric field (id, version...) from a JSON response body. */
+    protected static long readLong(String json, String path) {
+        return ((Number) JsonPath.read(json, path)).longValue();
     }
 }
