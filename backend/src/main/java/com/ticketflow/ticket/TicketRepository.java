@@ -1,5 +1,6 @@
 package com.ticketflow.ticket;
 
+import java.util.Collection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -13,4 +14,6 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
     @Override
     @EntityGraph(attributePaths = {"category", "requester", "assignee"})
     Page<Ticket> findAll(Specification<Ticket> spec, Pageable pageable);
+
+    boolean existsByAssigneeIdAndStatusIn(Long assigneeId, Collection<TicketStatus> statuses);
 }
