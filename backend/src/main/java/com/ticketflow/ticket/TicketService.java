@@ -6,6 +6,7 @@ import com.ticketflow.auth.AuthUser;
 import com.ticketflow.category.Category;
 import com.ticketflow.category.CategoryRepository;
 import com.ticketflow.common.ApiException;
+import com.ticketflow.common.PageResponse;
 import com.ticketflow.history.HistoryEventType;
 import com.ticketflow.history.HistoryRecorder;
 import com.ticketflow.sla.SlaCalculator;
@@ -18,6 +19,7 @@ import com.ticketflow.user.User;
 import com.ticketflow.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,12 @@ public class TicketService {
     @Transactional(readOnly = true)
     public TicketResponse get(Long id, AuthUser authUser) {
         return toResponse(findVisible(id, authUser));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<TicketResponse> search(TicketFilter filter, Pageable pageable, AuthUser authUser) {
+        var spec = TicketSpecifications.matching(filter, authUser, clock.instant(), sla);
+        return PageResponse.from(tickets.findAll(spec, pageable).map(this::toResponse));
     }
 
     public TicketResponse assign(Long id, AssignRequest request, AuthUser authUser) {
