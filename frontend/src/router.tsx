@@ -6,6 +6,7 @@ import { AppLayout } from './layout/AppLayout'
 import { NewTicketPage } from './tickets/NewTicketPage'
 import { TicketDetailPage } from './tickets/TicketDetailPage'
 import { TicketListPage } from './tickets/TicketListPage'
+import { UsersPage } from './users/UsersPage'
 
 export const routes: RouteObject[] = [
   {
@@ -24,6 +25,10 @@ export const routes: RouteObject[] = [
           { path: '/tickets', element: <TicketListPage /> },
           { path: '/tickets/new', element: <NewTicketPage /> },
           { path: '/tickets/:id', element: <TicketDetailPage /> },
+          {
+            element: <RequireAuth roles={['MANAGER']} />,
+            children: [{ path: '/users', element: <UsersPage /> }],
+          },
         ],
       },
     ],
