@@ -52,12 +52,12 @@ describe('ticket mutations keep the screen in sync with the version', () => {
 
   it('reloads the ticket after a comment, because a comment may resume it (new status and version)', async () => {
     mockApi({
-      'POST /tickets/7/comments': [201, { id: 1, text: 'Segue o print', author: { id: 1, name: 'Sol' }, createdAt: '' }],
+      'POST /tickets/7/comments': [201, { id: 1, text: 'Segue o print', internal: false, author: { id: 1, name: 'Sol' }, createdAt: '' }],
     })
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAddComment(7), { wrapper })
 
-    await act(() => result.current.mutateAsync('Segue o print'))
+    await act(() => result.current.mutateAsync({ text: 'Segue o print', internal: false }))
 
     expect(queryClient.getQueryState(ticketKeys.detail(7))?.isInvalidated).toBe(true)
   })

@@ -126,7 +126,8 @@ export function useComments(ticketId: number) {
 export function useAddComment(ticketId: number) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (text: string) => api.post<TicketComment>(`/tickets/${ticketId}/comments`, { text }),
+    mutationFn: (comment: { text: string; internal: boolean }) =>
+      api.post<TicketComment>(`/tickets/${ticketId}/comments`, comment),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
       void queryClient.invalidateQueries({ queryKey: ticketKeys.lists() })

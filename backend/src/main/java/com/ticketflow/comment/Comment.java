@@ -27,6 +27,8 @@ public class Comment {
 
     private String text;
 
+    private boolean internal;
+
     private Instant createdAt;
 
     protected Comment() {
@@ -34,9 +36,14 @@ public class Comment {
     }
 
     public Comment(Ticket ticket, User author, String text, Instant createdAt) {
+        this(ticket, author, text, false, createdAt);
+    }
+
+    public Comment(Ticket ticket, User author, String text, boolean internal, Instant createdAt) {
         this.ticket = ticket;
         this.author = author;
         this.text = text.strip();
+        this.internal = internal;
         this.createdAt = createdAt;
     }
 
@@ -50,6 +57,10 @@ public class Comment {
 
     public String getText() {
         return text;
+    }
+
+    public boolean isInternal() {
+        return internal;
     }
 
     public Instant getCreatedAt() {

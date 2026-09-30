@@ -75,6 +75,8 @@ export interface Page<T> {
 export interface TicketComment {
   id: number
   text: string
+  /** Internal notes are visible only to agents and managers. */
+  internal: boolean
   author: UserSummary
   createdAt: string
 }
