@@ -55,6 +55,25 @@ public class BusinessCalendar {
         }
     }
 
+    /**
+     * The instant that is {@code amount} of working time before {@code end}: the inverse of
+     * {@link #plus}. An end outside the window counts from the last closing time before it.
+     */
+    public Instant minus(Instant end, Duration amount) {
+        Instant cursor = previousClose(end);
+        Duration remaining = amount;
+        while (true) {
+            // The cursor sits in (open, close] of its day, so one nanosecond earlier is inside that day.
+            Instant windowStart = openOf(cursor.minusNanos(1).atZone(zone).toLocalDate());
+            Duration available = Duration.between(windowStart, cursor);
+            if (remaining.compareTo(available) <= 0) {
+                return cursor.minus(remaining);
+            }
+            remaining = remaining.minus(available);
+            cursor = previousClose(windowStart);
+        }
+    }
+
     /** Working time between two instants; zero when {@code to} is not after {@code from}. */
     public Duration between(Instant from, Instant to) {
         Duration total = Duration.ZERO;
@@ -91,6 +110,24 @@ public class BusinessCalendar {
             }
             day = day.plusDays(1);
             cursor = openOf(day);
+        }
+    }
+
+    /** {@code instant} itself when the service is open, otherwise the last closing time before it. */
+    private Instant previousClose(Instant instant) {
+        LocalDate day = instant.atZone(zone).toLocalDate();
+        Instant cursor = instant;
+        while (true) {
+            if (isWorkingDay(day)) {
+                if (cursor.isAfter(closeOf(day))) {
+                    return closeOf(day);
+                }
+                if (cursor.isAfter(openOf(day))) {
+                    return cursor;
+                }
+            }
+            day = day.minusDays(1);
+            cursor = closeOf(day);
         }
     }
 

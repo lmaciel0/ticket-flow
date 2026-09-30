@@ -51,6 +51,11 @@ public class SlaCalculator {
         return calendar == null ? Duration.between(from, to) : calendar.between(from, to);
     }
 
+    /** The instant that is {@code amount} of SLA-clock time before {@code now}; used to age the demo tickets. */
+    public Instant ago(Instant now, Duration amount) {
+        return calendar == null ? now.minus(amount) : calendar.minus(now, amount);
+    }
+
     /** A running ticket due before this instant has less than its risk window left. */
     public Instant atRiskBefore(Instant now, Priority priority) {
         return advance(now, riskWindow(priority));

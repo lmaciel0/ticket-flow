@@ -147,7 +147,9 @@ public class DemoDataSeeder implements ApplicationRunner {
             Duration age = scenario == Scenario.OPEN || scenario == Scenario.IN_PROGRESS
                     ? scale(sla.deadlineFor(priority), RUNNING_AGE[i % RUNNING_AGE.length])
                     : Duration.ofHours(6 + random.nextInt(24 * 6));
-            Instant createdAt = now.minus(age);
+            // Aged on the SLA clock: with business hours on, the mix of overdue/at-risk tickets must not
+            // depend on the time of day the demo happens to be reset.
+            Instant createdAt = sla.ago(now, age);
             Ticket ticket = tickets.save(
                     new Ticket(sample[0], sample[1], priority, category, requester, createdAt, sla));
             history.record(ticket, requester, HistoryEventType.CREATED, createdAt);
