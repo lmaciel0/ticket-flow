@@ -109,6 +109,36 @@ describe('api client', () => {
     expect(error).toMatchObject({ status: 413, message: 'O arquivo passa do limite de 5 MB.' })
   })
 
+  it('adds the trace id to server errors so the user can quote it to support', async () => {
+    mockFetch(jsonResponse(500, { status: 500, detail: 'Erro interno.', traceId: 'abc-12345678' }))
+
+    const error = await api.get('/tickets').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).message).toBe('Erro interno. (código abc-12345678)')
+    expect((error as ApiError).traceId).toBe('abc-12345678')
+  })
+
+  it('falls back to the X-Request-Id header when the error body has no trace id', async () => {
+    mockFetch(
+      new Response('<html>Bad gateway</html>', { status: 502, headers: { 'X-Request-Id': 'from-header-01' } }),
+    )
+
+    const error = (await api.get('/tickets').catch((e: unknown) => e)) as ApiError
+
+    expect(error.traceId).toBe('from-header-01')
+    expect(error.message).toContain('(código from-header-01)')
+  })
+
+  it('keeps the trace id out of the message for errors the user can fix', async () => {
+    mockFetch(jsonResponse(409, { status: 409, detail: 'Chamado alterado.', traceId: 'abc-12345678' }))
+
+    const error = (await api.get('/tickets').catch((e: unknown) => e)) as ApiError
+
+    expect(error.message).toBe('Chamado alterado.')
+    expect(error.traceId).toBe('abc-12345678')
+  })
+
   it('explains when the server cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')))
 

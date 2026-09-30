@@ -14,12 +14,15 @@ const FALLBACK_MESSAGES: Record<number, string> = {
 export class ApiError extends Error {
   readonly status: number
   readonly fieldErrors: Record<string, string>
+  /** Id that identifies this request in the server logs (X-Request-Id), when the server answered. */
+  readonly traceId: string | undefined
 
-  constructor(status: number, message: string, fieldErrors: Record<string, string> = {}) {
+  constructor(status: number, message: string, fieldErrors: Record<string, string> = {}, traceId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.fieldErrors = fieldErrors
+    this.traceId = traceId
   }
 }
 
@@ -44,10 +47,16 @@ export function setUnauthorizedHandler(handler: () => void) {
 async function toApiError(response: Response): Promise<ApiError> {
   let detail: string | undefined
   let fieldErrors: Record<string, string> = {}
+  let traceId = response.headers.get('X-Request-Id') ?? undefined
   try {
-    const problem = (await response.json()) as { detail?: string; errors?: Record<string, string> }
+    const problem = (await response.json()) as {
+      detail?: string
+      errors?: Record<string, string>
+      traceId?: string
+    }
     detail = problem.detail
     fieldErrors = problem.errors ?? {}
+    traceId = problem.traceId ?? traceId
   } catch {
     // Not JSON (e.g. a proxy error page): fall back to a generic message.
   }
@@ -55,7 +64,9 @@ async function toApiError(response: Response): Promise<ApiError> {
     response.status === 413
       ? FALLBACK_MESSAGES[413]
       : (detail ?? FALLBACK_MESSAGES[response.status] ?? 'Algo deu errado. Tente de novo.')
-  return new ApiError(response.status, message, fieldErrors)
+  // Only server failures show the code: the user cannot fix them, so they report it to support.
+  const shown = response.status >= 500 && traceId ? `${message} (código ${traceId})` : message
+  return new ApiError(response.status, shown, fieldErrors, traceId)
 }
 
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
