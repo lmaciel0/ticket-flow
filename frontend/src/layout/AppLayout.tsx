@@ -3,6 +3,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { Link, Outlet, useLocation } from 'react-router'
 import { useAuth, useCurrentUser } from '../auth/authContext'
 import { ROLE_LABELS } from '../shared/labels'
+import { ColorSchemeToggle } from './ColorSchemeToggle'
 
 interface MenuLink {
   to: string
@@ -45,6 +46,7 @@ export function AppLayout() {
               {user.name}
             </Text>
             <Badge variant="light">{ROLE_LABELS[user.role]}</Badge>
+            <ColorSchemeToggle />
             <Button variant="subtle" size="xs" onClick={logout}>
               Sair
             </Button>
