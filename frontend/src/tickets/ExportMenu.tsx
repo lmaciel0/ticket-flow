@@ -11,7 +11,7 @@ const OPTIONS: { format: ExportFormat; label: string }[] = [
 ]
 
 /** Exports every ticket matching the filters on screen (not just the current page). */
-export function ExportMenu({ filters }: { filters: TicketFilters }) {
+export function ExportMenu({ filters }: Readonly<{ filters: TicketFilters }>) {
   const download = useMutation({
     mutationFn: (format: ExportFormat) => exportTickets(filters, format),
     onSuccess: ({ truncated }) => {
