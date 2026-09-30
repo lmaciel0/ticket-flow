@@ -107,10 +107,29 @@ async function json<T>(method: string, path: string, body?: unknown): Promise<T>
   return (await response.json()) as T
 }
 
+/** A downloaded file plus what the export endpoint says about it. */
+export interface DownloadedFile {
+  blob: Blob
+  /** From Content-Disposition, when the server sent one. */
+  filename: string | undefined
+  /** More rows matched than the file holds (X-Export-Truncated). */
+  truncated: boolean
+}
+
 export const api = {
   get: <T>(path: string) => json<T>('GET', path),
   post: <T>(path: string, body?: unknown) => json<T>('POST', path, body),
   patch: <T>(path: string, body: unknown) => json<T>('PATCH', path, body),
   /** Binary responses (attachment downloads). */
   blob: async (path: string): Promise<Blob> => (await send('GET', path)).blob(),
+  /** Generated files (ticket export): the bytes plus the file name and the truncation flag. */
+  file: async (path: string): Promise<DownloadedFile> => {
+    const response = await send('GET', path)
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    return {
+      blob: await response.blob(),
+      filename: /filename="?([^";]+)"?/.exec(disposition)?.[1],
+      truncated: response.headers.get('X-Export-Truncated') === 'true',
+    }
+  },
 }

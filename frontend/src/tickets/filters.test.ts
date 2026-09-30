@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FILTERS, parseFilters, type TicketFilters, toApiQuery, toSearchParams } from './filters'
+import { DEFAULT_FILTERS, parseFilters, type TicketFilters, toApiQuery, toExportQuery, toSearchParams } from './filters'
 
 describe('ticket list filters in the URL', () => {
   it('starts with the unfinished tickets, soonest deadline first, page 1', () => {
@@ -53,5 +53,19 @@ describe('toApiQuery', () => {
 
   it('sends no status at all when every status is wanted', () => {
     expect(toApiQuery({ ...DEFAULT_FILTERS, status: [] })).toBe('sort=dueAt%2Casc&page=0&size=20')
+  })
+
+  it('exports with the same filters and sort as the list, but without paging', () => {
+    const filters: TicketFilters = { ...DEFAULT_FILTERS, priority: 'HIGH', q: ' rede ', page: 3 }
+
+    const query = new URLSearchParams(toExportQuery(filters, 'XLSX'))
+
+    expect(query.get('format')).toBe('XLSX')
+    expect(query.getAll('status')).toEqual(['OPEN', 'IN_PROGRESS', 'WAITING_REQUESTER'])
+    expect(query.get('priority')).toBe('HIGH')
+    expect(query.get('q')).toBe('rede')
+    expect(query.get('sort')).toBe('dueAt,asc')
+    expect(query.has('page')).toBe(false)
+    expect(query.has('size')).toBe(false)
   })
 })

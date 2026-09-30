@@ -79,7 +79,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        config.setExposedHeaders(List.of("Content-Disposition", TraceIdFilter.HEADER));
+        config.setExposedHeaders(List.of("Content-Disposition", TraceIdFilter.HEADER, "X-Export-Truncated"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
         return source;

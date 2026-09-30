@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { useCurrentUser } from '../auth/authContext'
 import { PRIORITY_COLORS, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from '../shared/labels'
 import { useTickets } from './api'
+import { ExportMenu } from './ExportMenu'
 import { parseFilters, type TicketFilters, toSearchParams } from './filters'
 import { SlaBadge } from './SlaBadge'
 import { TicketFiltersBar } from './TicketFiltersBar'
@@ -32,9 +33,12 @@ export function TicketListPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Chamados</Title>
-        <Button component={Link} to="/tickets/new">
-          Novo chamado
-        </Button>
+        <Group gap="sm">
+          <ExportMenu filters={filters} />
+          <Button component={Link} to="/tickets/new">
+            Novo chamado
+          </Button>
+        </Group>
       </Group>
 
       <TicketFiltersBar filters={filters} onChange={changeFilters} showMine={user.role !== 'REQUESTER'} />

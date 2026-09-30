@@ -24,6 +24,7 @@ Contas de demonstração (senha `demo1234`):
 - **Solicitante** abre chamados, acompanha, comenta, anexa arquivos e confirma ou reabre a solução.
 - **Atendente** assume chamados da fila, pede informações ao solicitante, muda prioridade e categoria, e resolve.
 - **Gestor** atribui chamados, gerencia usuários e acompanha o painel (SLA cumprido, tempo médio de resolução, carga por atendente).
+- **Exportação** da lista de chamados em CSV, Excel (.xlsx) e PDF, com os mesmos filtros da tela e respeitando a visibilidade de cada perfil (até 5.000 linhas por arquivo). No CSV, títulos que começam com `=`, `+`, `-` ou `@` são neutralizados contra injeção de fórmula.
 - **SLA por prioridade** (Crítica 4h, Alta 8h, Média 24h, Baixa 72h), em horas corridas (ou só em horário comercial, se ativado). O relógio pausa enquanto o chamado aguarda o solicitante e depois de resolvido. A lista mostra "no prazo", "em risco", "vencido" ou "pausado".
 - **Histórico** de tudo o que aconteceu em cada chamado.
 
