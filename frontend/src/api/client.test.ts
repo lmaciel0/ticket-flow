@@ -169,4 +169,19 @@ describe('api client', () => {
     expect(error).toMatchObject({ status: 401, message: 'E-mail ou senha inválidos.' })
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
+
+  it('reads the file name and the truncation flag of a generated file', async () => {
+    mockFetch(
+      new Response('a;b', {
+        status: 200,
+        headers: { 'Content-Disposition': 'attachment; filename="chamados-2026-10-01.csv"', 'X-Export-Truncated': 'true' },
+      }),
+    )
+
+    const file = await api.file('/tickets/export?format=CSV')
+
+    expect(file.filename).toBe('chamados-2026-10-01.csv')
+    expect(file.truncated).toBe(true)
+    expect(await file.blob.text()).toBe('a;b')
+  })
 })

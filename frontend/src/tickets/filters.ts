@@ -86,6 +86,18 @@ export function toSearchParams(filters: TicketFilters): URLSearchParams {
   return params
 }
 
+export type ExportFormat = 'CSV' | 'XLSX' | 'PDF'
+
+/** Query string for GET /api/tickets/export: the same filters and sort as the list, without paging. */
+export function toExportQuery(filters: TicketFilters, format: ExportFormat): string {
+  const params = new URLSearchParams()
+  params.set('format', format)
+  filters.status.forEach((status) => params.append('status', status))
+  appendFilters(params, filters)
+  params.set('sort', filters.sort)
+  return params.toString()
+}
+
 /** Query string for GET /api/tickets. */
 export function toApiQuery(filters: TicketFilters): string {
   const params = new URLSearchParams()
