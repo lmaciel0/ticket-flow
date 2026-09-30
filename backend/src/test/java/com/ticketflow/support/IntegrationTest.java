@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.ticketflow.auth.TokenService;
+import com.ticketflow.common.TraceIdFilter;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
 import com.ticketflow.user.UserRepository;
@@ -64,11 +65,15 @@ public abstract class IntegrationTest {
     @Autowired
     private TokenService tokenService;
 
+    @Autowired
+    private TraceIdFilter traceIdFilter;
+
     protected MockMvc mvc;
 
     @BeforeEach
     void setUpIntegrationTest() {
         mvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(traceIdFilter) // before Spring Security, like in production
                 .apply(springSecurity())
                 .defaultResponseCharacterEncoding(StandardCharsets.UTF_8)
                 .build();

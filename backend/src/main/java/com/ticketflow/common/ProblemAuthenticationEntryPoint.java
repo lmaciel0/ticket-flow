@@ -3,6 +3,7 @@ package com.ticketflow.common;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
@@ -15,7 +16,7 @@ public class ProblemAuthenticationEntryPoint implements AuthenticationEntryPoint
 
     private static final String BODY =
             "{\"type\":\"about:blank\",\"title\":\"Unauthorized\",\"status\":401,"
-                    + "\"detail\":\"Autenticação necessária.\"}";
+                    + "\"detail\":\"Autenticação necessária.\"%s}";
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException ex)
@@ -23,6 +24,8 @@ public class ProblemAuthenticationEntryPoint implements AuthenticationEntryPoint
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
-        response.getWriter().write(BODY);
+        // Runs outside Spring MVC, so the trace id is added here instead of by TraceIdProblemAdvice.
+        String traceId = MDC.get(TraceIdFilter.MDC_KEY);
+        response.getWriter().write(BODY.formatted(traceId == null ? "" : ",\"traceId\":\"" + traceId + "\""));
     }
 }
