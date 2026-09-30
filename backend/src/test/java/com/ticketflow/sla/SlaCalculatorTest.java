@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class SlaCalculatorTest {
@@ -72,5 +73,54 @@ class SlaCalculatorTest {
     void propertiesRequireEveryPriority() {
         assertThatThrownBy(() -> new SlaProperties(Map.of(Priority.LOW, Duration.ofHours(1))))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Nested
+    class WithBusinessHours {
+
+        // Friday 2026-01-09 17:00 in Sao Paulo = 20:00Z.
+        static final Instant FRIDAY_17H = Instant.parse("2026-01-09T20:00:00Z");
+
+        final SlaCalculator businessSla = new SlaCalculator(PROPERTIES, Clock.fixed(FRIDAY_17H, ZoneOffset.UTC),
+                BusinessCalendarTest.calendar(java.util.Set.of()));
+
+        @Test
+        void criticalTicketOpenedFridayAfternoonIsDueMondayMorning() {
+            assertThat(businessSla.dueAt(FRIDAY_17H, Priority.CRITICAL, 0))
+                    .isEqualTo(Instant.parse("2026-01-12T14:00:00Z")); // Monday 11:00
+        }
+
+        @Test
+        void pausedSecondsExtendTheDeadlineInWorkingTime() {
+            // Paused for 1 working hour: 4h + 1h = 5h -> 1h Friday + 4h Monday = Monday 12:00.
+            assertThat(businessSla.dueAt(FRIDAY_17H, Priority.CRITICAL, 3600))
+                    .isEqualTo(Instant.parse("2026-01-12T15:00:00Z"));
+        }
+
+        @Test
+        void elapsedIgnoresNightsAndWeekends() {
+            assertThat(businessSla.elapsed(FRIDAY_17H, Instant.parse("2026-01-12T14:00:00Z")))
+                    .isEqualTo(Duration.ofHours(4));
+        }
+
+        @Test
+        void riskIsMeasuredInWorkingTimeNotWallTime() {
+            // Due Monday 09:00: the wall clock says ~63h left, but only 2h of working time remain.
+            // CRITICAL's risk window is 1h, so it is still on track...
+            Instant dueMonday9h = Instant.parse("2026-01-12T12:00:00Z");
+            assertThat(businessSla.indicator(TicketStatus.IN_PROGRESS, Priority.CRITICAL, dueMonday9h, null))
+                    .isEqualTo(SlaIndicator.ON_TRACK);
+            // ...while HIGH (window 2h) due Monday 08:30 has 1h30 of working time left: at risk.
+            Instant dueMonday8h30 = Instant.parse("2026-01-12T11:30:00Z");
+            assertThat(businessSla.indicator(TicketStatus.IN_PROGRESS, Priority.HIGH, dueMonday8h30, null))
+                    .isEqualTo(SlaIndicator.AT_RISK);
+        }
+
+        @Test
+        void atRiskThresholdMatchesTheIndicator() {
+            // Friday 17:00 + 1h of working time (CRITICAL window) is Friday 18:00.
+            assertThat(businessSla.atRiskBefore(FRIDAY_17H, Priority.CRITICAL))
+                    .isEqualTo(Instant.parse("2026-01-09T21:00:00Z"));
+        }
     }
 }

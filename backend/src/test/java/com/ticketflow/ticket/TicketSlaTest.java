@@ -5,15 +5,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ticketflow.category.Category;
 import com.ticketflow.common.ApiException;
+import com.ticketflow.sla.BusinessCalendar;
 import com.ticketflow.sla.SlaCalculator;
 import com.ticketflow.sla.SlaProperties;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests (no Spring, no database) for how the ticket lifecycle moves the SLA clock. */
@@ -132,5 +138,31 @@ class TicketSlaTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("OPEN");
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.OPEN);
+    }
+
+    @Test
+    void pauseOnlyPushesTheDeadlineByWorkingTimeWhenBusinessHoursAreOn() {
+        SlaCalculator businessSla = new SlaCalculator(new SlaProperties(Map.of(
+                Priority.CRITICAL, Duration.ofHours(4),
+                Priority.HIGH, Duration.ofHours(8),
+                Priority.MEDIUM, Duration.ofHours(24),
+                Priority.LOW, Duration.ofHours(72))), Clock.fixed(T0, ZoneOffset.UTC),
+                new BusinessCalendar(ZoneId.of("America/Sao_Paulo"), LocalTime.of(8, 0), LocalTime.of(18, 0),
+                        EnumSet.range(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), Set.of()));
+        // Friday 2026-01-09 at 10:00 (Sao Paulo); the ticket waits for the requester over the weekend.
+        Instant friday10h = Instant.parse("2026-01-09T13:00:00Z");
+        Ticket ticket = new Ticket("Impressora", "Não imprime", Priority.CRITICAL, new Category("Hardware"),
+                requester, friday10h, businessSla);
+        assertThat(ticket.getDueAt()).isEqualTo(Instant.parse("2026-01-09T17:00:00Z")); // Friday 14:00
+
+        Instant pausedFriday11h = Instant.parse("2026-01-09T14:00:00Z");
+        Instant resumedMonday10h = Instant.parse("2026-01-12T13:00:00Z");
+        ticket.assign(agent, friday10h, businessSla);
+        ticket.changeStatus(TicketStatus.WAITING_REQUESTER, pausedFriday11h, businessSla);
+        ticket.changeStatus(TicketStatus.IN_PROGRESS, resumedMonday10h, businessSla);
+
+        // 1h of the 4h was used; paused 7h on Friday (11:00-18:00) + 2h on Monday (08:00-10:00) = 9h of
+        // working time. The 3h left run from Monday 10:00.
+        assertThat(ticket.getDueAt()).isEqualTo(Instant.parse("2026-01-12T16:00:00Z")); // Monday 13:00
     }
 }

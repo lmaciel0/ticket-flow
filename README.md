@@ -24,7 +24,7 @@ Contas de demonstração (senha `demo1234`):
 - **Solicitante** abre chamados, acompanha, comenta, anexa arquivos e confirma ou reabre a solução.
 - **Atendente** assume chamados da fila, pede informações ao solicitante, muda prioridade e categoria, e resolve.
 - **Gestor** atribui chamados, gerencia usuários e acompanha o painel (SLA cumprido, tempo médio de resolução, carga por atendente).
-- **SLA por prioridade** (Crítica 4h, Alta 8h, Média 24h, Baixa 72h), em horas corridas. O relógio pausa enquanto o chamado aguarda o solicitante e depois de resolvido. A lista mostra "no prazo", "em risco", "vencido" ou "pausado".
+- **SLA por prioridade** (Crítica 4h, Alta 8h, Média 24h, Baixa 72h), em horas corridas (ou só em horário comercial, se ativado). O relógio pausa enquanto o chamado aguarda o solicitante e depois de resolvido. A lista mostra "no prazo", "em risco", "vencido" ou "pausado".
 - **Histórico** de tudo o que aconteceu em cada chamado.
 
 ## Stack
@@ -44,7 +44,7 @@ Contas de demonstração (senha `demo1234`):
 6. **Token de usuário rebaixado ou desativado vale até expirar (8h).** A evolução é consultar o usuário a cada requisição ou manter uma lista de tokens revogados.
 7. **Anexos no PostgreSQL (`bytea`):** evita custo e infraestrutura extra, com limite de 5 MB e validação da assinatura do arquivo (não só da extensão). A interface `AttachmentStorage` permite migrar para S3.
 8. **O solicitante escolhe a prioridade inicial:** pode exagerar a urgência. O atendente responsável ou o gestor corrige, e a correção fica no histórico.
-9. **SLA em horas corridas:** horário comercial fica como evolução.
+9. **SLA em horas corridas por padrão:** o horário comercial (seg-sex, 08h-18h, com feriados configuráveis) existe no `BusinessCalendar`, mas vem desligado. Para usar, defina `SLA_BUSINESS_HOURS=true`; tickets já abertos mantêm o prazo gravado.
 10. **Histórico gravado explicitamente em vez de Envers:** dá controle sobre quais eventos importam e deixa o código legível.
 11. **Hospedagem de custo zero:**
     - A API roda no plano grátis do Render (512 MB, 0,1 CPU, dorme após 15 minutos). Para o primeiro acesso ficar em cerca de um minuto, a imagem Docker usa **CDS** (Class Data Sharing) e flags de JVM para pouca CPU. A subida medida caiu de ~190 s para ~60 s.
