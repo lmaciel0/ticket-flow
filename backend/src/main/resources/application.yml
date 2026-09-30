@@ -32,6 +32,11 @@ management:
       exposure:
         include: health
 
+logging:
+  pattern:
+    # Every log line of a request carries its trace id (see TraceIdFilter).
+    level: "%5p [%X{traceId:-}]"
+
 springdoc:
   swagger-ui:
     path: /swagger-ui
