@@ -35,6 +35,13 @@ class CommentApiTest extends IntegrationTest {
                 .content("{\"text\": \"%s\"}".formatted(text)));
     }
 
+    ResultActions internalNote(User author, String text) throws Exception {
+        return mvc.perform(post("/api/tickets/{id}/comments", ticketId)
+                .header("Authorization", bearer(author))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\": \"%s\", \"internal\": true}".formatted(text)));
+    }
+
     ResultActions changeStatus(User actor, String status, long version) throws Exception {
         return mvc.perform(post("/api/tickets/{id}/status", ticketId)
                 .header("Authorization", bearer(actor))
@@ -109,5 +116,46 @@ class CommentApiTest extends IntegrationTest {
         changeStatus(ana, "CLOSED", 2).andExpect(status().isOk());
 
         comment(ana, "Mais uma coisa").andExpect(status().isConflict());
+    }
+
+    @Test
+    void internalNoteIsVisibleToTheTeamButNeverToTheRequester() throws Exception {
+        comment(ana, "Olá").andExpect(status().isCreated());
+        internalNote(bruno, "Suspeito do cabo, pedir aprovação ao gestor")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.internal").value(true));
+
+        mvc.perform(get("/api/tickets/{id}/comments", ticketId).header("Authorization", bearer(bruno)))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].internal").value(false))
+                .andExpect(jsonPath("$[1].internal").value(true));
+        mvc.perform(get("/api/tickets/{id}/comments", ticketId).header("Authorization", bearer(ana)))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].text").value("Olá"));
+    }
+
+    @Test
+    void requesterCannotWriteInternalNotes() throws Exception {
+        internalNote(ana, "Nota secreta").andExpect(status().isForbidden());
+        // Other people's tickets stay invisible: 404, not 403.
+        internalNote(eva, "Nota secreta").andExpect(status().isNotFound());
+    }
+
+    @Test
+    void internalNoteLeavesNoTraceInTheHistoryAndDoesNotResumeTheTicket() throws Exception {
+        assignToBrunoAndAskRequester();
+        int before = historySize(ana);
+
+        internalNote(bruno, "Aguardando retorno do fornecedor").andExpect(status().isCreated());
+
+        org.junit.jupiter.api.Assertions.assertEquals(before, historySize(ana));
+        mvc.perform(get("/api/tickets/{id}", ticketId).header("Authorization", bearer(ana)))
+                .andExpect(jsonPath("$.status").value("WAITING_REQUESTER"));
+    }
+
+    private int historySize(User viewer) throws Exception {
+        String body = mvc.perform(get("/api/tickets/{id}/history", ticketId).header("Authorization", bearer(viewer)))
+                .andReturn().getResponse().getContentAsString();
+        return com.jayway.jsonpath.JsonPath.<java.util.List<?>>read(body, "$").size();
     }
 }

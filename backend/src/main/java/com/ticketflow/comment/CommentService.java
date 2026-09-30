@@ -42,19 +42,29 @@ public class CommentService {
     @Transactional(readOnly = true)
     public List<CommentResponse> list(Long ticketId, AuthUser authUser) {
         tickets.findVisible(ticketId, authUser);
-        return comments.findByTicketIdOrderByCreatedAtAscIdAsc(ticketId).stream()
+        List<Comment> thread = authUser.isRequester()
+                ? comments.findByTicketIdAndInternalFalseOrderByCreatedAtAscIdAsc(ticketId)
+                : comments.findByTicketIdOrderByCreatedAtAscIdAsc(ticketId);
+        return thread.stream()
                 .map(CommentResponse::from)
                 .toList();
     }
 
     public CommentResponse add(Long ticketId, CommentRequest request, AuthUser authUser) {
         Ticket ticket = tickets.findVisible(ticketId, authUser);
+        if (request.isInternal() && authUser.isRequester()) {
+            throw ApiException.forbidden("Somente a equipe de atendimento pode escrever notas internas.");
+        }
         if (ticket.getStatus() == TicketStatus.CLOSED) {
             throw ApiException.conflict("Chamados fechados não aceitam comentários.");
         }
         User author = users.getCurrent(authUser);
         Instant now = clock.instant();
-        Comment comment = comments.save(new Comment(ticket, author, request.text(), now));
+        Comment comment = comments.save(new Comment(ticket, author, request.text(), request.isInternal(), now));
+        if (request.isInternal()) {
+            // The history is visible to the requester, so an internal note must not leave a trace there.
+            return CommentResponse.from(comment);
+        }
         history.record(ticket, author, HistoryEventType.COMMENT_ADDED, now);
 
         // The requester answered what the agent asked: the ticket goes back to work automatically.
