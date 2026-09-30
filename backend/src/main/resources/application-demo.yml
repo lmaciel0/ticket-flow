@@ -3,3 +3,7 @@
 app:
   jwt:
     secret: ${JWT_SECRET}
+  sla:
+    business-hours:
+      # The public demo counts the SLA only Monday-Friday 08:00-18:00; SLA_BUSINESS_HOURS=false goes back to 24/7.
+      enabled: ${SLA_BUSINESS_HOURS:true}

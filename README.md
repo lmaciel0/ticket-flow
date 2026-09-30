@@ -45,7 +45,7 @@ Contas de demonstração (senha `demo1234`):
 6. **Token de usuário rebaixado ou desativado vale até expirar (8h).** A evolução é consultar o usuário a cada requisição ou manter uma lista de tokens revogados.
 7. **Anexos no PostgreSQL (`bytea`):** evita custo e infraestrutura extra, com limite de 5 MB e validação da assinatura do arquivo (não só da extensão). A interface `AttachmentStorage` permite migrar para S3.
 8. **O solicitante escolhe a prioridade inicial:** pode exagerar a urgência. O atendente responsável ou o gestor corrige, e a correção fica no histórico.
-9. **SLA em horas corridas por padrão:** o horário comercial (seg-sex, 08h-18h, com feriados configuráveis) existe no `BusinessCalendar`, mas vem desligado. Para usar, defina `SLA_BUSINESS_HOURS=true`; tickets já abertos mantêm o prazo gravado.
+9. **Horário comercial no SLA:** o `BusinessCalendar` (seg-sex, 08h-18h, feriados configuráveis) está ligado na demo pública e desligado no perfil padrão. Para alternar, defina `SLA_BUSINESS_HOURS=true` ou `false`. Chamados já abertos mantêm o prazo gravado; os da demo são recriados a cada 24 h já na régua escolhida.
 10. **Histórico gravado explicitamente em vez de Envers:** dá controle sobre quais eventos importam e deixa o código legível.
 11. **Hospedagem de custo zero:**
     - A API roda no plano grátis do Render (512 MB, 0,1 CPU, dorme após 15 minutos). Para o primeiro acesso ficar em cerca de um minuto, a imagem Docker usa **CDS** (Class Data Sharing) e flags de JVM para pouca CPU. A subida medida caiu de ~190 s para ~60 s.

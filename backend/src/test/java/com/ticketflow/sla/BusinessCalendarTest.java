@@ -97,6 +97,27 @@ class BusinessCalendarTest {
     }
 
     @Test
+    void minusGoesBackInWorkingTime() {
+        // Monday 10:00 minus 4h: 2h on Monday, 2h on Friday afternoon (16:00).
+        assertThat(calendar.minus(local("2026-01-12T10:00:00"), Duration.ofHours(4)))
+                .isEqualTo(local("2026-01-09T16:00:00"));
+        // From Saturday noon it counts from Friday closing time.
+        assertThat(calendar.minus(local("2026-01-10T12:00:00"), Duration.ofHours(2)))
+                .isEqualTo(local("2026-01-09T16:00:00"));
+        // Exactly one full day of work ends at that day opening time.
+        assertThat(calendar.minus(local("2026-01-07T18:00:00"), Duration.ofHours(10)))
+                .isEqualTo(local("2026-01-07T08:00:00"));
+    }
+
+    @Test
+    void minusIsTheInverseOfBetween() {
+        Instant end = local("2026-01-11T22:15:00"); // Sunday night
+        Duration amount = Duration.ofHours(27).plusMinutes(5);
+
+        assertThat(calendar.between(calendar.minus(end, amount), end)).isEqualTo(amount);
+    }
+
+    @Test
     void rejectsImpossibleConfiguration() {
         ZoneId zone = ZoneId.of("America/Sao_Paulo");
         assertThatThrownBy(() -> new BusinessCalendar(zone, LocalTime.of(18, 0), LocalTime.of(8, 0), WEEKDAYS, Set.of()))
