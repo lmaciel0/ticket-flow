@@ -2,6 +2,7 @@ package com.ticketflow.common;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.ticketflow.auth.JwtProperties;
+import com.ticketflow.user.User;
 import com.ticketflow.user.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -86,8 +87,9 @@ public class SecurityConfig {
 
     /**
      * Turns the "role" claim (e.g. MANAGER) into the authority ROLE_MANAGER used by @PreAuthorize.
-     * It also rejects tokens whose user no longer exists (the demo reset deletes users): one
-     * primary-key lookup per request, so an old token gets 401 everywhere instead of stale data.
+     * It also revokes tokens whose user no longer exists (the demo reset deletes users), was
+     * deactivated, or had the role changed since the token was issued: one primary-key lookup
+     * per request, so such a token gets 401 everywhere instead of keeping its access until expiry.
      */
     private Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter(UserRepository users) {
         JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
@@ -96,8 +98,11 @@ public class SecurityConfig {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
         return jwt -> {
-            if (!users.existsById(Long.valueOf(jwt.getSubject()))) {
-                throw new InvalidBearerTokenException("User no longer exists");
+            User user = users.findById(Long.valueOf(jwt.getSubject()))
+                    .filter(User::isActive)
+                    .orElseThrow(() -> new InvalidBearerTokenException("User no longer exists or is inactive"));
+            if (!user.getRole().name().equals(jwt.getClaimAsString("role"))) {
+                throw new InvalidBearerTokenException("User role changed since the token was issued");
             }
             return converter.convert(jwt);
         };

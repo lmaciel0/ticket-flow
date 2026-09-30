@@ -117,6 +117,31 @@ class AuthApiTest extends IntegrationTest {
     }
 
     @Test
+    void tokenOfDeactivatedUserIsRevokedImmediately() throws Exception {
+        User agent = createUser("Eva", Role.AGENT);
+        String token = bearer(agent);
+        mvc.perform(get("/api/auth/me").header("Authorization", token)).andExpect(status().isOk());
+
+        agent.setActive(false);
+        userRepository.save(agent);
+
+        mvc.perform(get("/api/auth/me").header("Authorization", token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void tokenIssuedBeforeARoleChangeIsRevoked() throws Exception {
+        User agent = createUser("Fabio", Role.AGENT);
+        String token = bearer(agent);
+
+        agent.setRole(Role.REQUESTER);
+        userRepository.save(agent);
+
+        mvc.perform(get("/api/auth/me").header("Authorization", token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void swaggerDocumentsBearerAuthentication() throws Exception {
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
