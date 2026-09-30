@@ -64,7 +64,7 @@ public final class TicketSpecifications {
         for (Priority priority : Priority.values()) {
             perPriority.add(cb.and(
                     cb.equal(root.get("priority"), priority),
-                    cb.lessThan(root.get("dueAt"), now.plus(sla.riskWindow(priority)))));
+                    cb.lessThan(root.get("dueAt"), sla.atRiskBefore(now, priority))));
         }
         return cb.and(running, cb.greaterThan(root.get("dueAt"), now),
                 cb.or(perPriority.toArray(Predicate[]::new)));

@@ -14,7 +14,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import java.time.Duration;
 import java.time.Instant;
 
 @Entity
@@ -91,7 +90,7 @@ public class Ticket {
         }
         if (!status.isClockRunning() && target.isClockRunning()) {
             // Leaving a pause (WAITING_REQUESTER or RESOLVED): the paused time pushes the deadline.
-            pausedTotalSeconds += Duration.between(pausedAt, now).toSeconds();
+            pausedTotalSeconds += sla.elapsed(pausedAt, now).toSeconds();
             pausedAt = null;
             dueAt = sla.dueAt(createdAt, priority, pausedTotalSeconds);
         } else if (status.isClockRunning() && !target.isClockRunning()) {

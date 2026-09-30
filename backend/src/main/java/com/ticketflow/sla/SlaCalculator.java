@@ -5,21 +5,31 @@ import com.ticketflow.ticket.TicketStatus;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
  * Pure SLA math. It receives a Clock instead of calling Instant.now(),
- * so tests can decide what "now" is.
+ * so tests can decide what "now" is. With a {@link BusinessCalendar} the SLA clock only runs during
+ * working hours; without one it runs around the clock.
  */
 @Component
 public class SlaCalculator {
 
     private final SlaProperties properties;
     private final Clock clock;
+    private final BusinessCalendar calendar;
 
     public SlaCalculator(SlaProperties properties, Clock clock) {
+        this(properties, clock, null);
+    }
+
+    @Autowired
+    public SlaCalculator(SlaProperties properties, Clock clock, @Nullable BusinessCalendar calendar) {
         this.properties = properties;
         this.clock = clock;
+        this.calendar = calendar;
     }
 
     public Duration deadlineFor(Priority priority) {
@@ -31,8 +41,23 @@ public class SlaCalculator {
         return deadlineFor(priority).dividedBy(4);
     }
 
+    /** {@code pausedSeconds} is SLA-clock time (see {@link #elapsed}), so it extends the deadline 1:1. */
     public Instant dueAt(Instant createdAt, Priority priority, long pausedSeconds) {
-        return createdAt.plus(deadlineFor(priority)).plusSeconds(pausedSeconds);
+        return advance(createdAt, deadlineFor(priority).plusSeconds(pausedSeconds));
+    }
+
+    /** SLA-clock time between two instants: wall time, or only working hours when a calendar is set. */
+    public Duration elapsed(Instant from, Instant to) {
+        return calendar == null ? Duration.between(from, to) : calendar.between(from, to);
+    }
+
+    /** A running ticket due before this instant has less than its risk window left. */
+    public Instant atRiskBefore(Instant now, Priority priority) {
+        return advance(now, riskWindow(priority));
+    }
+
+    private Instant advance(Instant start, Duration amount) {
+        return calendar == null ? start.plus(amount) : calendar.plus(start, amount);
     }
 
     public SlaIndicator indicator(TicketStatus status, Priority priority, Instant dueAt, Boolean slaBreached) {
@@ -46,7 +71,7 @@ public class SlaCalculator {
         if (!now.isBefore(dueAt)) {
             return SlaIndicator.OVERDUE;
         }
-        if (Duration.between(now, dueAt).compareTo(riskWindow(priority)) < 0) {
+        if (elapsed(now, dueAt).compareTo(riskWindow(priority)) < 0) {
             return SlaIndicator.AT_RISK;
         }
         return SlaIndicator.ON_TRACK;
