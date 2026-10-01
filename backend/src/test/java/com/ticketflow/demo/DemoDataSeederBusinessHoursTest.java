@@ -67,4 +67,27 @@ class DemoDataSeederBusinessHoursTest extends IntegrationTest {
         java.util.List<String> firstResponses = JsonPath.read(all, "$.content[*].firstResponse");
         assertThat(firstResponses).contains("PENDING", "OVERDUE", "MET", "BREACHED");
     }
+
+    @Test
+    void finishedTicketsMeetOrBreachTheSlaWhateverTheHourOfTheReset() {
+        DemoDataSeeder seeder = new DemoDataSeeder(jdbc, userRepository, categories, tickets, comments, history, sla,
+                passwordEncoder, clock, transaction);
+        ZonedDateTime saturdayNight = clock.instant().atZone(ZoneId.of("America/Sao_Paulo"))
+                .with(TemporalAdjusters.next(DayOfWeek.SATURDAY)).truncatedTo(ChronoUnit.DAYS).withHour(3);
+        clock.advance(Duration.between(clock.instant(), saturdayNight.toInstant()));
+        seeder.resetIfDue();
+        java.util.List<Boolean> atNight = finishedTicketsBreached();
+
+        // Wednesday 11:00, in the middle of a working day.
+        clock.advance(Duration.ofDays(4).plusHours(8));
+        assertThat(seeder.resetIfDue()).isTrue();
+
+        assertThat(atNight).contains(true, false);
+        assertThat(finishedTicketsBreached()).isEqualTo(atNight);
+    }
+
+    private java.util.List<Boolean> finishedTicketsBreached() {
+        return jdbc.queryForList(
+                "SELECT sla_breached FROM tickets WHERE status IN ('RESOLVED', 'CLOSED') ORDER BY id", Boolean.class);
+    }
 }

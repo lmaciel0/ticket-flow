@@ -173,15 +173,16 @@ public class DemoDataSeeder implements ApplicationRunner {
     /** Replays the lifecycle with the real domain methods, at moments between creation and now. */
     private void play(Ticket ticket, Scenario scenario, User agent, User requester, Instant createdAt,
             Duration age, double firstResponsePace) {
-        // The first response is placed on the SLA clock, so on time / late does not depend on the hour of the
-        // reset. It never comes after 30% of the age, so it stays before the next steps; capping only moves it
-        // earlier, so it never turns an on-time answer into a late one.
+        // Every step is placed on the SLA clock, like the age itself, so whether a deadline is met or breached
+        // does not depend on the hour of the reset. The first response never comes after 30% of the age, so it
+        // stays before the next steps; capping only moves it earlier, so it never turns an on-time answer into
+        // a late one.
         Instant firstResponse = sla.after(createdAt,
                 scale(sla.firstResponseDeadlineFor(ticket.getPriority()), firstResponsePace));
-        Instant latest = createdAt.plus(scale(age, 0.3));
+        Instant latest = sla.after(createdAt, scale(age, 0.3));
         Instant assignedAt = firstResponse.isBefore(latest) ? firstResponse : latest;
-        Instant secondStep = createdAt.plus(scale(age, 0.4));
-        Instant thirdStep = createdAt.plus(scale(age, 0.7));
+        Instant secondStep = sla.after(createdAt, scale(age, 0.4));
+        Instant thirdStep = sla.after(createdAt, scale(age, 0.7));
 
         ticket.assign(agent, agent, assignedAt, sla);
         history.record(ticket, agent, HistoryEventType.ASSIGNED, "assignee", null, agent.getName(), assignedAt);
