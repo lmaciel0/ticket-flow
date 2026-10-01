@@ -67,6 +67,15 @@ class DemoDataSeederTest extends IntegrationTest {
         }
         mvc.perform(get("/api/tickets").param("status", "WAITING_REQUESTER").header("Authorization", bearer))
                 .andExpect(jsonPath("$.content[0].sla").value("PAUSED"));
+
+        String all = mvc.perform(get("/api/tickets").param("size", "100").header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<String> firstResponses = com.jayway.jsonpath.JsonPath.read(all, "$.content[*].firstResponse");
+        assertThat(firstResponses).contains("PENDING", "OVERDUE", "MET", "BREACHED");
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM tickets WHERE assignee_id IS NOT NULL AND first_responded_at IS NULL",
+                Long.class)).isZero();
     }
 
     @Test

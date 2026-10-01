@@ -62,6 +62,9 @@ public class DemoDataSeeder implements ApplicationRunner {
     /** Fraction of the deadline already used by running tickets: on track, at risk, overdue. */
     private static final double[] RUNNING_AGE = {0.3, 0.85, 1.5};
 
+    /** Fraction of the first-response deadline used before the agent took the ticket: two on time, one late. */
+    private static final double[] FIRST_RESPONSE_PACE = {0.4, 0.7, 1.4};
+
     private enum Scenario { OPEN, IN_PROGRESS, WAITING, RESOLVED, CLOSED }
 
     private final JdbcTemplate jdbc;
@@ -144,9 +147,16 @@ public class DemoDataSeeder implements ApplicationRunner {
             Category category = allCategories.get(random.nextInt(allCategories.size()));
             String[] sample = SAMPLES[i % SAMPLES.length];
 
-            Duration age = scenario == Scenario.OPEN || scenario == Scenario.IN_PROGRESS
-                    ? scale(sla.deadlineFor(priority), RUNNING_AGE[i % RUNNING_AGE.length])
-                    : Duration.ofHours(6 + random.nextInt(24 * 6));
+            double running = RUNNING_AGE[i % RUNNING_AGE.length];
+            boolean newcomer = (i / Scenario.values().length) % 2 == 0;
+            Duration age = switch (scenario) {
+                // Half the open tickets are new (first response pending or overdue); the other half and the
+                // in-progress ones keep the on-track / at-risk / overdue mix of the resolution SLA.
+                case OPEN -> scale(newcomer ? sla.firstResponseDeadlineFor(priority) : sla.deadlineFor(priority),
+                        running);
+                case IN_PROGRESS -> scale(sla.deadlineFor(priority), running);
+                default -> Duration.ofHours(6 + random.nextInt(24 * 6));
+            };
             // Aged on the SLA clock: with business hours on, the mix of overdue/at-risk tickets must not
             // depend on the time of day the demo happens to be reset.
             Instant createdAt = sla.ago(now, age);
@@ -154,15 +164,22 @@ public class DemoDataSeeder implements ApplicationRunner {
                     new Ticket(sample[0], sample[1], priority, category, requester, createdAt, sla));
             history.record(ticket, requester, HistoryEventType.CREATED, createdAt);
             if (scenario != Scenario.OPEN) {
-                play(ticket, scenario, agent, requester, createdAt, age);
+                play(ticket, scenario, agent, requester, createdAt, age,
+                        FIRST_RESPONSE_PACE[i % FIRST_RESPONSE_PACE.length]);
             }
         }
     }
 
     /** Replays the lifecycle with the real domain methods, at moments between creation and now. */
     private void play(Ticket ticket, Scenario scenario, User agent, User requester, Instant createdAt,
-            Duration age) {
-        Instant assignedAt = createdAt.plus(scale(age, 0.1));
+            Duration age, double firstResponsePace) {
+        // The first response is placed on the SLA clock, so on time / late does not depend on the hour of the
+        // reset. It never comes after 30% of the age, so it stays before the next steps; capping only moves it
+        // earlier, so it never turns an on-time answer into a late one.
+        Instant firstResponse = sla.after(createdAt,
+                scale(sla.firstResponseDeadlineFor(ticket.getPriority()), firstResponsePace));
+        Instant latest = createdAt.plus(scale(age, 0.3));
+        Instant assignedAt = firstResponse.isBefore(latest) ? firstResponse : latest;
         Instant secondStep = createdAt.plus(scale(age, 0.4));
         Instant thirdStep = createdAt.plus(scale(age, 0.7));
 
