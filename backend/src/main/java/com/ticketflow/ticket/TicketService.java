@@ -94,7 +94,7 @@ public class TicketService {
         Instant now = clock.instant();
         TicketStatus oldStatus = ticket.getStatus();
         String oldAssignee = ticket.getAssignee() == null ? null : ticket.getAssignee().getName();
-        ticket.assign(assignee, now, sla);
+        ticket.assign(assignee, actor, now, sla);
         events.publishEvent(new TicketAssigned(ticket, actor, now, oldAssignee, assignee.getName()));
         if (ticket.getStatus() != oldStatus) {
             events.publishEvent(new TicketStatusChanged(ticket, actor, now, oldStatus, ticket.getStatus()));

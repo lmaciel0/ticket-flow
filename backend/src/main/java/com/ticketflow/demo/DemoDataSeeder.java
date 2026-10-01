@@ -166,7 +166,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         Instant secondStep = createdAt.plus(scale(age, 0.4));
         Instant thirdStep = createdAt.plus(scale(age, 0.7));
 
-        ticket.assign(agent, assignedAt, sla);
+        ticket.assign(agent, agent, assignedAt, sla);
         history.record(ticket, agent, HistoryEventType.ASSIGNED, "assignee", null, agent.getName(), assignedAt);
         history.record(ticket, agent, HistoryEventType.STATUS_CHANGED, "status", "OPEN", "IN_PROGRESS", assignedAt);
 

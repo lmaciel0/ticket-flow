@@ -41,6 +41,8 @@ class TicketSlaTest {
 
     final User requester = new User("Ana", "ana@test.com", "hash", Role.REQUESTER, T0);
     final User agent = new User("Bruno", "bruno@test.com", "hash", Role.AGENT, T0);
+    final User otherAgent = new User("Diego", "diego@test.com", "hash", Role.AGENT, T0);
+    final User manager = new User("Carla", "carla@test.com", "hash", Role.MANAGER, T0);
 
     Ticket newTicket(Priority priority) {
         return new Ticket("  Impressora  ", " Não imprime ", priority, new Category("Hardware"), requester, T0, sla);
@@ -63,7 +65,7 @@ class TicketSlaTest {
     void assigningAnOpenTicketStartsWork() {
         Ticket ticket = newTicket(Priority.HIGH);
 
-        ticket.assign(agent, at(0, 10), sla);
+        ticket.assign(agent, agent, at(0, 10), sla);
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
         assertThat(ticket.getAssignee()).isSameAs(agent);
@@ -73,7 +75,7 @@ class TicketSlaTest {
     @Test
     void waitingForRequesterPausesTheClockAndResumingPushesTheDeadline() {
         Ticket ticket = newTicket(Priority.HIGH);
-        ticket.assign(agent, at(1, 0), sla);
+        ticket.assign(agent, agent, at(1, 0), sla);
 
         ticket.changeStatus(TicketStatus.WAITING_REQUESTER, at(2, 0), sla);
         assertThat(ticket.getPausedAt()).isEqualTo(at(2, 0));
@@ -87,13 +89,13 @@ class TicketSlaTest {
     @Test
     void resolvingRecordsWhetherTheSlaWasMet() {
         Ticket onTime = newTicket(Priority.CRITICAL);
-        onTime.assign(agent, at(0, 5), sla);
+        onTime.assign(agent, agent, at(0, 5), sla);
         onTime.changeStatus(TicketStatus.RESOLVED, at(3, 59), sla);
         assertThat(onTime.getResolvedAt()).isEqualTo(at(3, 59));
         assertThat(onTime.getSlaBreached()).isFalse();
 
         Ticket late = newTicket(Priority.CRITICAL);
-        late.assign(agent, at(0, 5), sla);
+        late.assign(agent, agent, at(0, 5), sla);
         late.changeStatus(TicketStatus.RESOLVED, at(4, 0), sla);
         assertThat(late.getSlaBreached()).isTrue();
     }
@@ -101,7 +103,7 @@ class TicketSlaTest {
     @Test
     void reopeningClearsTheResultAndCountsResolvedTimeAsPause() {
         Ticket ticket = newTicket(Priority.CRITICAL);
-        ticket.assign(agent, at(0, 5), sla);
+        ticket.assign(agent, agent, at(0, 5), sla);
         ticket.changeStatus(TicketStatus.RESOLVED, at(1, 0), sla);
 
         ticket.changeStatus(TicketStatus.IN_PROGRESS, at(3, 0), sla);
@@ -114,7 +116,7 @@ class TicketSlaTest {
     @Test
     void closingKeepsTheResolutionResult() {
         Ticket ticket = newTicket(Priority.CRITICAL);
-        ticket.assign(agent, at(0, 5), sla);
+        ticket.assign(agent, agent, at(0, 5), sla);
         ticket.changeStatus(TicketStatus.RESOLVED, at(1, 0), sla);
 
         ticket.changeStatus(TicketStatus.CLOSED, at(2, 0), sla);
@@ -127,13 +129,57 @@ class TicketSlaTest {
     @Test
     void changingPriorityRecalculatesTheDeadlineKeepingPausedTime() {
         Ticket ticket = newTicket(Priority.LOW);
-        ticket.assign(agent, at(0, 0), sla);
+        ticket.assign(agent, agent, at(0, 0), sla);
         ticket.changeStatus(TicketStatus.WAITING_REQUESTER, at(1, 0), sla);
         ticket.changeStatus(TicketStatus.IN_PROGRESS, at(2, 0), sla);
 
         ticket.changePriority(Priority.CRITICAL, sla);
 
         assertThat(ticket.getDueAt()).isEqualTo(at(5, 0));
+    }
+
+    @Test
+    void newTicketHasAFirstResponseDeadlineAndNoAnswerYet() {
+        Ticket ticket = newTicket(Priority.HIGH);
+
+        assertThat(ticket.getFirstResponseDueAt()).isEqualTo(at(1, 0));
+        assertThat(ticket.getFirstRespondedAt()).isNull();
+    }
+
+    @Test
+    void takingTheTicketIsTheFirstResponseAndOnlyTheFirstOneCounts() {
+        Ticket ticket = newTicket(Priority.HIGH);
+
+        ticket.assign(agent, agent, at(0, 20), sla);
+        ticket.assign(otherAgent, manager, at(0, 40), sla);
+        ticket.recordFirstResponse(agent, at(0, 50));
+
+        assertThat(ticket.getFirstRespondedAt()).isEqualTo(at(0, 20));
+    }
+
+    @Test
+    void theRequesterNeverAnswersTheirOwnTicket() {
+        Ticket ownTicket = new Ticket("VPN", "Cai toda hora", Priority.HIGH, new Category("Acesso"), agent, T0, sla);
+
+        ownTicket.recordFirstResponse(agent, at(0, 10));
+        ownTicket.assign(agent, agent, at(0, 20), sla);
+        assertThat(ownTicket.getFirstRespondedAt()).isNull();
+        assertThat(ownTicket.getStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+
+        ownTicket.recordFirstResponse(otherAgent, at(0, 30));
+        assertThat(ownTicket.getFirstRespondedAt()).isEqualTo(at(0, 30));
+    }
+
+    @Test
+    void priorityChangeMovesTheFirstResponseDeadlineOnlyBeforeTheAnswer() {
+        Ticket ticket = newTicket(Priority.HIGH);
+
+        ticket.changePriority(Priority.CRITICAL, sla);
+        assertThat(ticket.getFirstResponseDueAt()).isEqualTo(at(0, 30));
+
+        ticket.recordFirstResponse(agent, at(0, 10));
+        ticket.changePriority(Priority.LOW, sla);
+        assertThat(ticket.getFirstResponseDueAt()).isEqualTo(at(0, 30));
     }
 
     @Test
@@ -159,7 +205,7 @@ class TicketSlaTest {
 
         Instant pausedFriday11h = Instant.parse("2026-01-09T14:00:00Z");
         Instant resumedMonday10h = Instant.parse("2026-01-12T13:00:00Z");
-        ticket.assign(agent, friday10h, businessSla);
+        ticket.assign(agent, agent, friday10h, businessSla);
         ticket.changeStatus(TicketStatus.WAITING_REQUESTER, pausedFriday11h, businessSla);
         ticket.changeStatus(TicketStatus.IN_PROGRESS, resumedMonday10h, businessSla);
 
