@@ -2,8 +2,7 @@ package com.ticketflow.attachment;
 
 import com.ticketflow.auth.AuthUser;
 import com.ticketflow.common.ApiException;
-import com.ticketflow.history.HistoryEventType;
-import com.ticketflow.history.HistoryRecorder;
+import com.ticketflow.history.event.AttachmentAdded;
 import com.ticketflow.ticket.Ticket;
 import com.ticketflow.ticket.TicketService;
 import com.ticketflow.ticket.TicketStatus;
@@ -15,6 +14,7 @@ import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,16 +41,16 @@ public class AttachmentService {
     private final AttachmentStorage storage;
     private final TicketService tickets;
     private final UserRepository users;
-    private final HistoryRecorder history;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public AttachmentService(AttachmentRepository attachments, AttachmentStorage storage, TicketService tickets,
-            UserRepository users, HistoryRecorder history, Clock clock) {
+            UserRepository users, ApplicationEventPublisher events, Clock clock) {
         this.attachments = attachments;
         this.storage = storage;
         this.tickets = tickets;
         this.users = users;
-        this.history = history;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -83,7 +83,7 @@ public class AttachmentService {
         Attachment attachment = attachments.save(
                 new Attachment(ticket, uploader, filename, type.contentType(), data.length, now));
         storage.store(attachment.getId(), data);
-        history.record(ticket, uploader, HistoryEventType.ATTACHMENT_ADDED, "attachment", null, filename, now);
+        events.publishEvent(new AttachmentAdded(ticket, uploader, now, filename));
         return AttachmentResponse.from(attachment);
     }
 

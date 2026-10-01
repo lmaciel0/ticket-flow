@@ -7,8 +7,11 @@ import com.ticketflow.category.Category;
 import com.ticketflow.category.CategoryRepository;
 import com.ticketflow.common.ApiException;
 import com.ticketflow.common.PageResponse;
-import com.ticketflow.history.HistoryEventType;
-import com.ticketflow.history.HistoryRecorder;
+import com.ticketflow.history.event.TicketAssigned;
+import com.ticketflow.history.event.TicketCategoryChanged;
+import com.ticketflow.history.event.TicketCreated;
+import com.ticketflow.history.event.TicketPriorityChanged;
+import com.ticketflow.history.event.TicketStatusChanged;
 import com.ticketflow.sla.SlaCalculator;
 import com.ticketflow.ticket.TicketDtos.AssignRequest;
 import com.ticketflow.ticket.TicketDtos.ChangeStatusRequest;
@@ -19,6 +22,7 @@ import com.ticketflow.user.User;
 import com.ticketflow.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,16 +34,16 @@ public class TicketService {
     private final TicketRepository tickets;
     private final CategoryRepository categories;
     private final UserRepository users;
-    private final HistoryRecorder history;
+    private final ApplicationEventPublisher events;
     private final SlaCalculator sla;
     private final Clock clock;
 
     public TicketService(TicketRepository tickets, CategoryRepository categories, UserRepository users,
-            HistoryRecorder history, SlaCalculator sla, Clock clock) {
+            ApplicationEventPublisher events, SlaCalculator sla, Clock clock) {
         this.tickets = tickets;
         this.categories = categories;
         this.users = users;
-        this.history = history;
+        this.events = events;
         this.sla = sla;
         this.clock = clock;
     }
@@ -50,7 +54,7 @@ public class TicketService {
         Instant now = clock.instant();
         Ticket ticket = tickets.save(new Ticket(request.title(), request.description(), request.priority(),
                 category, requester, now, sla));
-        history.record(ticket, requester, HistoryEventType.CREATED, now);
+        events.publishEvent(new TicketCreated(ticket, requester, now));
         return toResponse(ticket);
     }
 
@@ -91,10 +95,9 @@ public class TicketService {
         TicketStatus oldStatus = ticket.getStatus();
         String oldAssignee = ticket.getAssignee() == null ? null : ticket.getAssignee().getName();
         ticket.assign(assignee, now, sla);
-        history.record(ticket, actor, HistoryEventType.ASSIGNED, "assignee", oldAssignee, assignee.getName(), now);
+        events.publishEvent(new TicketAssigned(ticket, actor, now, oldAssignee, assignee.getName()));
         if (ticket.getStatus() != oldStatus) {
-            history.record(ticket, actor, HistoryEventType.STATUS_CHANGED, "status", oldStatus.name(),
-                    ticket.getStatus().name(), now);
+            events.publishEvent(new TicketStatusChanged(ticket, actor, now, oldStatus, ticket.getStatus()));
         }
         return flushAndMap(ticket);
     }
@@ -111,8 +114,7 @@ public class TicketService {
         Instant now = clock.instant();
         TicketStatus oldStatus = ticket.getStatus();
         ticket.changeStatus(target, now, sla);
-        history.record(ticket, users.getCurrent(authUser), HistoryEventType.STATUS_CHANGED, "status",
-                oldStatus.name(), target.name(), now);
+        events.publishEvent(new TicketStatusChanged(ticket, users.getCurrent(authUser), now, oldStatus, target));
         return flushAndMap(ticket);
     }
 
@@ -129,17 +131,15 @@ public class TicketService {
         User actor = users.getCurrent(authUser);
         Instant now = clock.instant();
         if (request.priority() != null && request.priority() != ticket.getPriority()) {
-            String oldPriority = ticket.getPriority().name();
+            Priority oldPriority = ticket.getPriority();
             ticket.changePriority(request.priority(), sla);
-            history.record(ticket, actor, HistoryEventType.PRIORITY_CHANGED, "priority", oldPriority,
-                    request.priority().name(), now);
+            events.publishEvent(new TicketPriorityChanged(ticket, actor, now, oldPriority, request.priority()));
         }
         if (request.categoryId() != null && !request.categoryId().equals(ticket.getCategory().getId())) {
             Category category = findCategory(request.categoryId());
             String oldCategory = ticket.getCategory().getName();
             ticket.changeCategory(category);
-            history.record(ticket, actor, HistoryEventType.CATEGORY_CHANGED, "category", oldCategory,
-                    category.getName(), now);
+            events.publishEvent(new TicketCategoryChanged(ticket, actor, now, oldCategory, category.getName()));
         }
         return flushAndMap(ticket);
     }

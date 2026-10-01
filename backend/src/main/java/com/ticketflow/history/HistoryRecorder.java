@@ -6,8 +6,9 @@ import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 /**
- * Writes history explicitly from the services, inside the same transaction as the change:
- * if the change is rolled back, so is its history entry.
+ * Writes one history row. The domain services do not call it: they publish events and
+ * {@link HistoryEventListener} records them here, before the commit, so the entry lives and dies with the
+ * change. The demo seeder calls it directly because it needs back-dated entries.
  */
 @Component
 public class HistoryRecorder {
