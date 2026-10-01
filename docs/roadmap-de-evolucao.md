@@ -38,6 +38,7 @@ Documento permanente com o catálogo de melhorias arquiteturais, segurança, ban
 ## 2. Banco de Dados & Performance
 
 ### 2.1. Busca Textual Otimizada com `pg_trgm` (Trigramas)
+- **Status**: ✅ Implementado (spec: `docs/specs/2026-10-01-trigram-search-design.md`). Os índices são sobre as expressões `lower(title)` e `lower(description)`, as mesmas da consulta; um índice nas colunas cruas, como no exemplo abaixo, não seria usado.
 - **Situação atual**: `TicketSpecifications` utiliza `LIKE %termo%` com `lower(title)` e `lower(description)`, forçando *Sequential Scan* no banco.
 - **Proposta**:
   - Migration Flyway habilitando a extensão `pg_trgm` e criando índice GIN:
