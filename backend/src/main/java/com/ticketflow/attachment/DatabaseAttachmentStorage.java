@@ -1,10 +1,12 @@
 package com.ticketflow.attachment;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-/** Stores the bytes in the attachment_content table (bytea column). */
+/** Stores the bytes in the attachment_content table (bytea column). The default adapter. */
 @Component
+@ConditionalOnProperty(name = "app.attachments.storage", havingValue = "database", matchIfMissing = true)
 public class DatabaseAttachmentStorage implements AttachmentStorage {
 
     private final JdbcTemplate jdbc;

@@ -40,5 +40,19 @@ services:
     depends_on:
       - backend
 
+  # Optional S3-compatible storage for attachments (Adobe S3Mock). Only starts with --profile s3;
+  # docker-compose.s3.yml points the backend at it.
+  s3:
+    image: adobe/s3mock:5.2.3
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /s3mock-data
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    ports:
+      - "9090:9090"
+    volumes:
+      - s3-data:/s3mock-data
+    profiles: [s3]
+
 volumes:
   db-data:
+  s3-data:
