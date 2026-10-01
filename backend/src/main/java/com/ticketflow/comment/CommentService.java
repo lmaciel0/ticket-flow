@@ -4,8 +4,8 @@ import com.ticketflow.auth.AuthUser;
 import com.ticketflow.comment.CommentDtos.CommentRequest;
 import com.ticketflow.comment.CommentDtos.CommentResponse;
 import com.ticketflow.common.ApiException;
-import com.ticketflow.history.HistoryEventType;
-import com.ticketflow.history.HistoryRecorder;
+import com.ticketflow.history.event.CommentAdded;
+import com.ticketflow.history.event.TicketStatusChanged;
 import com.ticketflow.sla.SlaCalculator;
 import com.ticketflow.ticket.Ticket;
 import com.ticketflow.ticket.TicketService;
@@ -15,6 +15,7 @@ import com.ticketflow.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,16 +26,16 @@ public class CommentService {
     private final CommentRepository comments;
     private final TicketService tickets;
     private final UserRepository users;
-    private final HistoryRecorder history;
+    private final ApplicationEventPublisher events;
     private final SlaCalculator sla;
     private final Clock clock;
 
     public CommentService(CommentRepository comments, TicketService tickets, UserRepository users,
-            HistoryRecorder history, SlaCalculator sla, Clock clock) {
+            ApplicationEventPublisher events, SlaCalculator sla, Clock clock) {
         this.comments = comments;
         this.tickets = tickets;
         this.users = users;
-        this.history = history;
+        this.events = events;
         this.sla = sla;
         this.clock = clock;
     }
@@ -65,13 +66,13 @@ public class CommentService {
             // The history is visible to the requester, so an internal note must not leave a trace there.
             return CommentResponse.from(comment);
         }
-        history.record(ticket, author, HistoryEventType.COMMENT_ADDED, now);
+        events.publishEvent(new CommentAdded(ticket, author, now));
 
         // The requester answered what the agent asked: the ticket goes back to work automatically.
         if (ticket.getStatus() == TicketStatus.WAITING_REQUESTER && ticket.isRequestedBy(author.getId())) {
             ticket.changeStatus(TicketStatus.IN_PROGRESS, now, sla);
-            history.record(ticket, author, HistoryEventType.STATUS_CHANGED, "status",
-                    TicketStatus.WAITING_REQUESTER.name(), TicketStatus.IN_PROGRESS.name(), now);
+            events.publishEvent(new TicketStatusChanged(ticket, author, now, TicketStatus.WAITING_REQUESTER,
+                    TicketStatus.IN_PROGRESS));
         }
         return CommentResponse.from(comment);
     }

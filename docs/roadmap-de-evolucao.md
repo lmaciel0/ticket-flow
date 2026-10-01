@@ -9,6 +9,7 @@ Documento permanente com o catálogo de melhorias arquiteturais, segurança, ban
 ## 1. Arquitetura Backend & Clean Code
 
 ### 1.1. Desacoplamento via Spring Application Events (`@DomainEvents`)
+- **Status**: ✅ Implementado (spec: `docs/specs/2026-10-01-domain-events-design.md`). Usa `ApplicationEventPublisher` e `@TransactionalEventListener(BEFORE_COMMIT)`, pois `@DomainEvents` só dispara em `repository.save(...)`.
 - **Situação atual**: `TicketService` invoca diretamente `history.record(...)` em múltiplos métodos para registrar eventos na linha do tempo.
 - **Proposta**:
   - Publicar eventos de domínio: `TicketCreatedEvent`, `TicketStatusChangedEvent`, `TicketAssignedEvent`.

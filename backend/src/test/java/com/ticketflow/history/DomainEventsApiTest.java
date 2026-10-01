@@ -1,10 +1,13 @@
 package com.ticketflow.history;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ticketflow.history.event.AttachmentAdded;
+import com.ticketflow.history.event.CommentAdded;
 import com.ticketflow.history.event.HistoryEvent;
 import com.ticketflow.history.event.TicketAssigned;
 import com.ticketflow.history.event.TicketCategoryChanged;
@@ -16,6 +19,7 @@ import com.ticketflow.ticket.Priority;
 import com.ticketflow.ticket.TicketStatus;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +29,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.ResultActions;
 
 /**
@@ -78,6 +83,20 @@ class DomainEventsApiTest extends IntegrationTest {
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
+    }
+
+    ResultActions comment(User author, long ticketId, String text, boolean internal) throws Exception {
+        return mvc.perform(post("/api/tickets/{id}/comments", ticketId)
+                .header("Authorization", bearer(author))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\": \"%s\", \"internal\": %s}".formatted(text, internal)));
+    }
+
+    ResultActions changeStatus(User actor, long ticketId, String status, long version) throws Exception {
+        return mvc.perform(post("/api/tickets/{id}/status", ticketId)
+                .header("Authorization", bearer(actor))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"%s\", \"version\": %d}".formatted(status, version)));
     }
 
     List<String> historyEventTypes(long ticketId) {
@@ -172,5 +191,62 @@ class DomainEventsApiTest extends IntegrationTest {
                 .formatted(categoryId("Hardware"))).andExpect(status().isOk());
 
         assertThat(recorder.received).isEmpty();
+    }
+
+    @Test
+    void publicCommentPublishesCommentAdded() throws Exception {
+        long id = createTicket(ana, "Impressora", "LOW");
+        recorder.received.clear();
+
+        comment(ana, id, "Olá", false).andExpect(status().isCreated());
+
+        assertThat(recorder.received).singleElement().isInstanceOfSatisfying(CommentAdded.class,
+                event -> assertThat(event.actor().getId()).isEqualTo(ana.getId()));
+        assertThat(historyEventTypes(id)).containsExactly("CREATED", "COMMENT_ADDED");
+    }
+
+    @Test
+    void internalNotePublishesNothingAndLeavesNoHistory() throws Exception {
+        long id = createTicket(ana, "Impressora", "LOW");
+        recorder.received.clear();
+
+        comment(bruno, id, "Suspeito do cabo", true).andExpect(status().isCreated());
+
+        assertThat(recorder.received).isEmpty();
+        assertThat(historyEventTypes(id)).containsExactly("CREATED");
+    }
+
+    @Test
+    void requesterAnswerPublishesCommentAddedThenStatusChanged() throws Exception {
+        long id = createTicket(ana, "Impressora", "LOW");
+        assign(bruno, id, bruno.getId(), 0).andExpect(status().isOk());
+        changeStatus(bruno, id, "WAITING_REQUESTER", 1).andExpect(status().isOk());
+        recorder.received.clear();
+
+        comment(ana, id, "Segue o print", false).andExpect(status().isCreated());
+
+        assertThat(recorder.received).hasSize(2);
+        assertThat(recorder.received.get(0)).isInstanceOf(CommentAdded.class);
+        assertThat(recorder.received.get(1)).isInstanceOfSatisfying(TicketStatusChanged.class, event -> {
+            assertThat(event.actor().getId()).isEqualTo(ana.getId());
+            assertThat(event.oldStatus()).isEqualTo(TicketStatus.WAITING_REQUESTER);
+            assertThat(event.newStatus()).isEqualTo(TicketStatus.IN_PROGRESS);
+        });
+    }
+
+    @Test
+    void uploadPublishesAttachmentAdded() throws Exception {
+        long id = createTicket(ana, "Impressora", "LOW");
+        recorder.received.clear();
+        MockMultipartFile file = new MockMultipartFile("file", "relatório.pdf", "application/octet-stream",
+                "%PDF-1.7 conteudo do relatorio".getBytes(StandardCharsets.US_ASCII));
+
+        mvc.perform(multipart("/api/tickets/{id}/attachments", id).file(file).header("Authorization", bearer(ana)))
+                .andExpect(status().isCreated());
+
+        assertThat(recorder.received).singleElement().isInstanceOfSatisfying(AttachmentAdded.class, event -> {
+            assertThat(event.actor().getId()).isEqualTo(ana.getId());
+            assertThat(event.filename()).isEqualTo("relatório.pdf");
+        });
     }
 }
