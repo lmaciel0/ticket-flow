@@ -158,8 +158,10 @@ public class TicketService {
     }
 
     public TicketResponse toResponse(Ticket ticket) {
-        return TicketResponse.from(ticket, sla.indicator(ticket.getStatus(), ticket.getPriority(),
-                ticket.getDueAt(), ticket.getSlaBreached()));
+        return TicketResponse.from(ticket,
+                sla.indicator(ticket.getStatus(), ticket.getPriority(), ticket.getDueAt(), ticket.getSlaBreached()),
+                sla.firstResponseIndicator(ticket.getStatus(), ticket.getFirstResponseDueAt(),
+                        ticket.getFirstRespondedAt()));
     }
 
     /** Closing or reopening a RESOLVED ticket is the requester's call; everything else is the assignee's. */
