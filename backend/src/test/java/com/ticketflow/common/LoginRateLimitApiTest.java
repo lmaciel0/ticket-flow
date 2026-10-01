@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ticketflow.support.IntegrationTest;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
+import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -113,6 +114,36 @@ class LoginRateLimitApiTest extends IntegrationTest {
         register(ip, "quatro@test.com")
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "1200"));
+    }
+
+    @Test
+    void anEncodedPathCountsAsTheSameRoute() throws Exception {
+        // Spring decodes "%6E" to "n" when routing, so the filter must not let this reach the login unlimited.
+        for (int i = 0; i < 5; i++) {
+            login(ip, PASSWORD).andExpect(status().isOk());
+        }
+        mvc.perform(post(URI.create("/api/auth/logi%6E"))
+                        .with(request -> {
+                            request.setRemoteAddr(ip);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "%s", "password": "%s"}
+                                """.formatted(ana.getEmail(), PASSWORD)))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void ipv6AddressesOfTheSameNetworkShareTheLimit() throws Exception {
+        // One IPv6 subscriber holds a whole /64; rotating inside it must not reset the limit.
+        String network = "2001:db8:0:" + nextIp + ":";
+        for (int i = 0; i < 5; i++) {
+            login(network + ":" + (i + 1), PASSWORD).andExpect(status().isOk());
+        }
+        login(network + ":99", PASSWORD).andExpect(status().isTooManyRequests());
+
+        login("2001:db8:1:" + nextIp + "::1", PASSWORD).andExpect(status().isOk());
     }
 
     @Test

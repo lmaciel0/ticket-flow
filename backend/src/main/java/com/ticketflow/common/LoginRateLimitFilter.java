@@ -9,8 +9,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Clock;
-import java.util.Map;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +22,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -37,28 +42,28 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private final boolean enabled;
     private final ClockTimeMeter timeMeter;
-    /** Path → (IP → bucket). */
-    private final Map<String, RouteLimiter> routes;
+    private final List<RouteLimiter> routes;
 
     public LoginRateLimitFilter(RateLimitProperties properties, Clock clock) {
         this.enabled = properties.enabled();
         this.timeMeter = new ClockTimeMeter(clock);
-        this.routes = Map.of(
-                "/api/auth/login", new RouteLimiter(properties.login()),
-                "/api/auth/register", new RouteLimiter(properties.register()));
+        this.routes = List.of(
+                new RouteLimiter("/api/auth/login", properties.login()),
+                new RouteLimiter("/api/auth/register", properties.register()));
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !enabled || !HttpMethod.POST.matches(request.getMethod()) || !routes.containsKey(path(request));
+        return !enabled || route(request) == null;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String path = path(request);
+        RouteLimiter route = route(request);
+        String path = route.path;
         String ip = request.getRemoteAddr();
-        ConsumptionProbe probe = routes.get(path).bucketFor(ip).tryConsumeAndReturnRemaining(1);
+        ConsumptionProbe probe = route.bucketFor(clientKey(ip)).tryConsumeAndReturnRemaining(1);
         if (probe.isConsumed()) {
             chain.doFilter(request, response);
             return;
@@ -75,17 +80,50 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                 traceId == null ? "" : ",\"traceId\":\"" + traceId + "\""));
     }
 
-    private static String path(HttpServletRequest request) {
-        return request.getRequestURI().substring(request.getContextPath().length());
+    /**
+     * Matched the way Spring Security and Spring MVC match (decoded path), so "/api/auth/logi%6E", which they route
+     * to the login, cannot slip past the limit.
+     */
+    private RouteLimiter route(HttpServletRequest request) {
+        for (RouteLimiter route : routes) {
+            if (route.matcher.matches(request)) {
+                return route;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The IP, except that an IPv6 address counts for its whole /64: one subscriber usually holds a /64 and could
+     * otherwise pick a new address for every attempt.
+     */
+    static String clientKey(String ip) {
+        if (ip.indexOf(':') < 0) {
+            return ip;
+        }
+        try {
+            // An address literal (the container always gives one) is parsed, never looked up in DNS.
+            byte[] address = InetAddress.getByName(ip).getAddress();
+            if (address.length != 16) {
+                return ip;
+            }
+            return HexFormat.of().formatHex(address, 0, 8) + "::/64";
+        } catch (UnknownHostException e) {
+            return ip;
+        }
     }
 
     /** The buckets of one route. An idle IP is forgotten once its bucket would be full again. */
     private final class RouteLimiter {
 
+        private final String path;
+        private final RequestMatcher matcher;
         private final RateLimitProperties.Limit limit;
         private final Cache<String, Bucket> buckets;
 
-        RouteLimiter(RateLimitProperties.Limit limit) {
+        RouteLimiter(String path, RateLimitProperties.Limit limit) {
+            this.path = path;
+            this.matcher = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, path);
             this.limit = limit;
             this.buckets = Caffeine.newBuilder()
                     .expireAfterAccess(limit.period())

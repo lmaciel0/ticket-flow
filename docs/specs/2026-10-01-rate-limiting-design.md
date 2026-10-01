@@ -60,9 +60,9 @@ app:
 
 `OncePerRequestFilter` no pacote `common`. Ele **não** é um bean: o `SecurityConfig` o cria (`new LoginRateLimitFilter(properties, clock)`) e o registra só na cadeia do Spring Security (`http.addFilterAfter(filter, CorsFilter.class)`). Como bean, o Spring Boot o registraria também como filtro de servlet comum, que rodaria antes do CORS.
 
-- `shouldNotFilter`: deixa passar tudo que não for `POST /api/auth/login` ou `POST /api/auth/register`, e tudo quando `enabled` é `false`.
+- `shouldNotFilter`: deixa passar tudo que não for `POST /api/auth/login` ou `POST /api/auth/register`, e tudo quando `enabled` é `false`. As rotas são reconhecidas com `PathPatternRequestMatcher`, que compara o caminho já decodificado, como o Spring Security e o Spring MVC fazem; comparar o `getRequestURI()` cru deixaria `/api/auth/logi%6E` chegar ao login sem limite.
 - Para cada rota há um `Cache<String, Bucket>` do Caffeine com `expireAfterAccess(period)` (depois desse tempo sem uso o bucket estaria cheio de novo, então esquecê-lo não muda nada) e `maximumSize(100_000)`.
-- A chave é `request.getRemoteAddr()`, que com a estratégia `native` já é o IP do cliente.
+- A chave é `request.getRemoteAddr()`, que com a estratégia `native` já é o IP do cliente. Um endereço IPv6 conta pelo seu /64 inteiro: um assinante costuma ter um /64 e poderia trocar de endereço a cada tentativa.
 - O bucket tem `capacity` fichas e recarga gradual de `capacity` fichas por `period`.
 - `tryConsumeAndReturnRemaining(1)`: se consumiu, segue a cadeia. Se não, responde 429 e não chama o resto da cadeia.
 
@@ -95,7 +95,7 @@ O `ApiError` já usa o `detail` do ProblemDetail, e as telas de login e cadastro
 - **`RateLimitProperties`**: capacidade zero ou período não positivo derrubam a inicialização.
 - **Testes existentes**: `IntegrationTest` passa a usar `@SpringBootTest(properties = "app.rate-limit.enabled=false")`; todos continuam verdes.
 - **Frontend**: `client.test.ts` cobre a mensagem padrão do 429.
-- **Em produção, depois do deploy**: 6 logins seguidos na demo dão 429, e o log `WARN` mostra o IP público do cliente, e não um IP interno do Render.
+- **Em produção, depois do deploy**: 6 logins seguidos na demo dão 429, e o IP do log `WARN` é **igual ao IP público de quem testou** (conferido em dois provedores diferentes, por exemplo a rede de casa e o celular). Um IP público qualquer não basta: se for um IP do Cloudflare ou do balanceador do Render, todos os visitantes dividem o mesmo limite. Nesse caso, ler o header `CF-Connecting-IP` ou configurar `server.tomcat.remoteip.internal-proxies`.
 
 O `RemoteIpValve` do Tomcat não roda no MockMvc, então o `forward-headers-strategy` só é verificado em produção; os testes definem o IP direto no `remoteAddr`.
 
