@@ -27,7 +27,7 @@ class RateLimitConfigTest {
     }
 
     @Test
-    void readsTheClientIpThatTheProxyRecorded() {
+    void trustsForwardedHeadersFromTheProxy() {
         runner.run(context -> assertThat(context.getEnvironment().getProperty("server.forward-headers-strategy"))
                 .isEqualTo("native"));
     }
