@@ -11,7 +11,14 @@ import com.ticketflow.ticket.TicketDtos.UpdateTicketRequest;
 import com.ticketflow.ticket.export.ExportFormat;
 import com.ticketflow.ticket.export.TicketExportService;
 import com.ticketflow.ticket.export.TicketExportService.TicketExport;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.List;
 import java.util.Set;
 import org.springframework.data.domain.PageRequest;
@@ -42,6 +49,16 @@ public class TicketController {
     private static final int MAX_PAGE_SIZE = 100;
     /** Tells the client that more tickets matched than fit in the exported file. */
     public static final String TRUNCATED_HEADER = "X-Export-Truncated";
+    private static final String IF_MATCH_DOC = "ETag do chamado recebido no GET, por exemplo \"3\".";
+
+    /** Swagger: the errors every If-Match change can answer, documented once for the three endpoints. */
+    @Target(ElementType.METHOD)
+    @Retention(RetentionPolicy.RUNTIME)
+    @ApiResponse(responseCode = "200", description = "Chamado alterado; o cabeçalho ETag traz a nova versão.")
+    @ApiResponse(responseCode = "412", description = "O chamado foi alterado por outra pessoa (If-Match desatualizado).")
+    @ApiResponse(responseCode = "428", description = "Faltou o cabeçalho If-Match.")
+    @interface PreconditionResponses {
+    }
 
     private final TicketService tickets;
     private final TicketExportService exports;
@@ -105,8 +122,10 @@ public class TicketController {
     }
 
     @PatchMapping("/{id}")
+    @PreconditionResponses
     @PreAuthorize("hasAnyRole('AGENT', 'MANAGER')")
     public ResponseEntity<TicketResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateTicketRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
         return withETag(ResponseEntity.ok(),
@@ -114,8 +133,10 @@ public class TicketController {
     }
 
     @PostMapping("/{id}/assign")
+    @PreconditionResponses
     @PreAuthorize("hasAnyRole('AGENT', 'MANAGER')")
     public ResponseEntity<TicketResponse> assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
         return withETag(ResponseEntity.ok(),
@@ -123,8 +144,10 @@ public class TicketController {
     }
 
     @PostMapping("/{id}/status")
+    @PreconditionResponses
     public ResponseEntity<TicketResponse> changeStatus(@PathVariable Long id,
             @Valid @RequestBody ChangeStatusRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
         return withETag(ResponseEntity.ok(),

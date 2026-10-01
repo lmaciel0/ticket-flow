@@ -1,5 +1,6 @@
 package com.ticketflow.ticket;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -129,6 +130,21 @@ class TicketConditionalRequestApiTest extends IntegrationTest {
     @Test
     void aRequesterWithoutAccessGets404EvenWithAStaleIfMatch() throws Exception {
         changeStatus(eva, etag(9), "CLOSED").andExpect(status().isNotFound());
+    }
+
+    @Test
+    void theApiDocsSayIfMatchIsRequiredAndList412And428() throws Exception {
+        String[][] mutations = {{"/api/tickets/{id}", "patch"}, {"/api/tickets/{id}/assign", "post"},
+                {"/api/tickets/{id}/status", "post"}};
+        for (String[] mutation : mutations) {
+            String operation = "$.paths['%s'].%s".formatted(mutation[0], mutation[1]);
+            mvc.perform(get("/v3/api-docs"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(operation + ".parameters[?(@.name == 'If-Match')].required", hasItem(true)))
+                    .andExpect(jsonPath(operation + ".responses['200']").exists())
+                    .andExpect(jsonPath(operation + ".responses['412']").exists())
+                    .andExpect(jsonPath(operation + ".responses['428']").exists());
+        }
     }
 
     @Test
