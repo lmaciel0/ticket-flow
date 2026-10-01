@@ -129,7 +129,9 @@ export function useComments(ticketId: number) {
 /**
  * A comment returns only the comment, but it may have changed the ticket: when the requester
  * answers a ticket waiting for them, the backend moves it back to "in progress" (new status and
- * new version). So we reload the whole ticket: detail, comments and history.
+ * new version), and the first public reply from the team records the first response (new version).
+ * So we reload the whole ticket: detail, comments and history. Because it writes the ticket, a
+ * comment can also hit a conflict; then the detail is reloaded like after any other change.
  */
 export function useAddComment(ticketId: number) {
   const queryClient = useQueryClient()
@@ -139,6 +141,11 @@ export function useAddComment(ticketId: number) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
       void queryClient.invalidateQueries({ queryKey: ticketKeys.lists() })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
+      }
     },
   })
 }

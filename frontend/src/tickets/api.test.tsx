@@ -76,6 +76,16 @@ describe('ticket mutations send the version on screen in If-Match', () => {
     expect(queryClient.getQueryState(ticketKeys.detail(7))?.isInvalidated).toBe(true)
   })
 
+  it('reloads the ticket when a comment hits 409, because the first team reply also writes the ticket', async () => {
+    mockApi({ 'POST /tickets/7/comments': [409, { status: 409, detail: 'O chamado foi alterado por outra pessoa.' }] })
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAddComment(7), { wrapper })
+
+    await act(() => result.current.mutateAsync({ text: 'Estou verificando', internal: false }).catch(() => {}))
+
+    expect(queryClient.getQueryState(ticketKeys.detail(7))?.isInvalidated).toBe(true)
+  })
+
   it('reloads the ticket on 412, when the If-Match version is no longer current', async () => {
     mockApi({ 'POST /tickets/7/status': [412, { status: 412, detail: 'O chamado foi alterado por outra pessoa.' }] })
     const { queryClient, wrapper } = setup()
