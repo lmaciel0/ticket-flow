@@ -113,7 +113,9 @@ class LoginRateLimitApiTest extends IntegrationTest {
         register(ip, "tres@test.com").andExpect(status().isCreated());
         register(ip, "quatro@test.com")
                 .andExpect(status().isTooManyRequests())
-                .andExpect(header().string("Retry-After", "1200"));
+                .andExpect(header().string("Retry-After", "1200"))
+                // A wait of a minute or more reads in minutes; the header stays in seconds.
+                .andExpect(jsonPath("$.detail").value("Muitas tentativas. Tente de novo em 20 min."));
     }
 
     @Test

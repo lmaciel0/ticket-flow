@@ -2,6 +2,7 @@ package com.ticketflow.common;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.FilterChain;
@@ -38,7 +39,7 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private static final String BODY =
             "{\"type\":\"about:blank\",\"title\":\"Too Many Requests\",\"status\":429,"
-                    + "\"detail\":\"Muitas tentativas. Tente de novo em %d s.\"%s}";
+                    + "\"detail\":\"Muitas tentativas. Tente de novo em %s.\"%s}";
 
     private final boolean enabled;
     private final ClockTimeMeter timeMeter;
@@ -76,8 +77,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         response.setCharacterEncoding("UTF-8");
         // Runs outside Spring MVC, so the trace id is added here instead of by TraceIdProblemAdvice.
         String traceId = MDC.get(TraceIdFilter.MDC_KEY);
-        response.getWriter().write(BODY.formatted(retryAfter,
+        response.getWriter().write(BODY.formatted(waitText(retryAfter),
                 traceId == null ? "" : ",\"traceId\":\"" + traceId + "\""));
+    }
+
+    /** "12 s" under a minute, "20 min" (rounded up) from a minute on: nobody counts 1200 seconds. */
+    static String waitText(long seconds) {
+        return seconds < 60 ? seconds + " s" : (seconds + 59) / 60 + " min";
     }
 
     /**
@@ -118,23 +124,27 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
         private final String path;
         private final RequestMatcher matcher;
-        private final RateLimitProperties.Limit limit;
+        /** Immutable, so every bucket of the route shares it. */
+        private final Bandwidth bandwidth;
         private final Cache<String, Bucket> buckets;
 
         RouteLimiter(String path, RateLimitProperties.Limit limit) {
             this.path = path;
             this.matcher = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, path);
-            this.limit = limit;
+            this.bandwidth = Bandwidth.builder().capacity(limit.capacity())
+                    .refillGreedy(limit.capacity(), limit.period())
+                    .build();
+            // 20 thousand IPs is a few MB on the 512 MB free instance. A flood of new IPs beyond that evicts the
+            // least recently used ones, which only resets their count.
             this.buckets = Caffeine.newBuilder()
                     .expireAfterAccess(limit.period())
-                    .maximumSize(100_000)
+                    .maximumSize(20_000)
                     .build();
         }
 
         Bucket bucketFor(String ip) {
             return buckets.get(ip, key -> Bucket.builder()
-                    .addLimit(bandwidth -> bandwidth.capacity(limit.capacity())
-                            .refillGreedy(limit.capacity(), limit.period()))
+                    .addLimit(bandwidth)
                     .withCustomTimePrecision(timeMeter)
                     .build());
         }
