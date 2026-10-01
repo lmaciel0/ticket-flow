@@ -109,6 +109,22 @@ describe('api client', () => {
     expect(error).toMatchObject({ status: 413, message: 'O arquivo passa do limite de 5 MB.' })
   })
 
+  it('shows the wait the server asked for after too many attempts', async () => {
+    mockFetch(jsonResponse(429, { status: 429, detail: 'Muitas tentativas. Tente de novo em 12 s.' }))
+
+    const error = await api.post('/auth/login', {}).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ status: 429, message: 'Muitas tentativas. Tente de novo em 12 s.' })
+  })
+
+  it('still explains a 429 that comes without a message', async () => {
+    mockFetch(new Response('', { status: 429 }))
+
+    const error = await api.post('/auth/login', {}).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ status: 429, message: 'Muitas tentativas. Tente de novo em instantes.' })
+  })
+
   it('adds the trace id to server errors so the user can quote it to support', async () => {
     mockFetch(jsonResponse(500, { status: 500, detail: 'Erro interno.', traceId: 'abc-12345678' }))
 
