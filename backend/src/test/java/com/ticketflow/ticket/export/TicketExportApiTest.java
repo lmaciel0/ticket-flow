@@ -59,6 +59,16 @@ class TicketExportApiTest extends IntegrationTest {
     }
 
     @Test
+    void csvShowsTheFirstResponseIndicator() throws Exception {
+        String csv = body(export(bruno, "format=CSV"));
+
+        assertThat(csv.lines().findFirst().orElseThrow()).endsWith(";SLA;1ª resposta");
+        // Nobody took the new tickets yet, so the first response is still pending.
+        assertThat(csv.lines().filter(line -> line.contains("Impressora sem papel")).findFirst().orElseThrow())
+                .endsWith(";Pendente");
+    }
+
+    @Test
     void requesterOnlyExportsTheirOwnTickets() throws Exception {
         String csv = body(export(ana, "format=CSV"));
 

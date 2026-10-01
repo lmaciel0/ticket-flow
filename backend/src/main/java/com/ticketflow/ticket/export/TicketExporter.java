@@ -31,8 +31,8 @@ public class TicketExporter {
     /** Excel in Portuguese (Brazil) splits columns on a semicolon, not on a comma. */
     private static final char SEPARATOR = ';';
     /** The PDF leaves some columns out to fit the page. */
-    private static final int[] PDF_COLUMNS = {0, 1, 2, 3, 4, 6, 8, 10};
-    private static final float[] PDF_WIDTHS = {0.6f, 3.4f, 1.6f, 1.1f, 1.4f, 1.5f, 1.1f, 1.1f};
+    private static final int[] PDF_COLUMNS = {0, 1, 2, 3, 4, 6, 8, 10, 11};
+    private static final float[] PDF_WIDTHS = {0.6f, 3.0f, 1.6f, 1.1f, 1.4f, 1.5f, 1.1f, 1.1f, 1.1f};
     private static final Color HEADER_BACKGROUND = new Color(0xD0, 0xEB, 0xFF);
 
     private final ZoneId zone;
