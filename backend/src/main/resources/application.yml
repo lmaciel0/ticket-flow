@@ -23,9 +23,13 @@ spring:
 server:
   # Render sets PORT (10000 by default); locally and in docker compose it stays 8080.
   port: ${PORT:8080}
-  # Render's proxy forwards the client IP in X-Forwarded-For; Tomcat trusts it only from internal addresses.
+  # Tomcat takes the client IP from a header only when the connection comes from an internal address (Render's
+  # proxy). On Render, X-Forwarded-For ends with a Cloudflare edge address that changes on every request; the
+  # visitor's address is in CF-Connecting-IP, which Cloudflare always overwrites, so a client cannot fake it.
   forward-headers-strategy: native
   tomcat:
+    remoteip:
+      remote-ip-header: CF-Connecting-IP
     max-swallow-size: 10MB
 
 management:

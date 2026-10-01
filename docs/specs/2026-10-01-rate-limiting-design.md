@@ -31,7 +31,7 @@ Hoje `POST /api/auth/login` e `POST /api/auth/register` aceitam qualquer quantid
 | Limites | Login 5 por minuto, cadastro 3 por hora, configuráveis em `app.rate-limit` | Login: o número do roadmap, de sobra para quem digita a senha errada algumas vezes. Cadastro: cada um cria um usuário real no banco. |
 | Recarga | Gradual (*greedy*): 1 tentativa de login a cada 12 s, 1 cadastro a cada 20 min | Quem é bloqueado espera pouco para a próxima tentativa, em vez de esperar o minuto inteiro. |
 | O que conta | Toda requisição às duas rotas, com sucesso ou não | Simples, e não exige olhar a resposta. 5 por minuto sobra para logins de verdade. |
-| IP real atrás do proxy | `server.forward-headers-strategy: native` | O Tomcat (`RemoteIpValve`) só usa `X-Forwarded-For` quando a conexão vem de uma rede interna, como o proxy do Render, e pega o IP que esse proxy anotou, não o que o cliente escreveu. |
+| IP real atrás do proxy | `server.forward-headers-strategy: native` com `server.tomcat.remoteip.remote-ip-header: CF-Connecting-IP` | O Tomcat (`RemoteIpValve`) só lê o header quando a conexão vem de uma rede interna, como o proxy do Render. No Render, o `X-Forwarded-For` termina com um servidor do Cloudflare que muda a cada requisição (visto em produção: nenhum login era bloqueado); o IP do visitante vem no `CF-Connecting-IP`, que o Cloudflare sempre sobrescreve, então o cliente não consegue falsificá-lo. |
 | Relógio | O `TimeMeter` do Bucket4j lê o `Clock` da aplicação | Os testes avançam o `MutableClock` em vez de esperar de verdade. |
 | Testes existentes | Limite desligado por padrão nos testes de integração (`app.rate-limit.enabled=false`) | Eles fazem muitos logins seguidos do mesmo IP. O teste do limite liga a chave. |
 
