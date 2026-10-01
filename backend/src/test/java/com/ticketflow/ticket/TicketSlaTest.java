@@ -27,11 +27,17 @@ class TicketSlaTest {
 
     static final Instant T0 = Instant.parse("2026-01-10T08:00:00Z");
 
-    final SlaCalculator sla = new SlaCalculator(new SlaProperties(Map.of(
+    static final SlaProperties PROPERTIES = new SlaProperties(Map.of(
             Priority.CRITICAL, Duration.ofHours(4),
             Priority.HIGH, Duration.ofHours(8),
             Priority.MEDIUM, Duration.ofHours(24),
-            Priority.LOW, Duration.ofHours(72))), Clock.fixed(T0, ZoneOffset.UTC));
+            Priority.LOW, Duration.ofHours(72)), Map.of(
+            Priority.CRITICAL, Duration.ofMinutes(30),
+            Priority.HIGH, Duration.ofHours(1),
+            Priority.MEDIUM, Duration.ofHours(4),
+            Priority.LOW, Duration.ofHours(8)));
+
+    final SlaCalculator sla = new SlaCalculator(PROPERTIES, Clock.fixed(T0, ZoneOffset.UTC));
 
     final User requester = new User("Ana", "ana@test.com", "hash", Role.REQUESTER, T0);
     final User agent = new User("Bruno", "bruno@test.com", "hash", Role.AGENT, T0);
@@ -142,11 +148,7 @@ class TicketSlaTest {
 
     @Test
     void pauseOnlyPushesTheDeadlineByWorkingTimeWhenBusinessHoursAreOn() {
-        SlaCalculator businessSla = new SlaCalculator(new SlaProperties(Map.of(
-                Priority.CRITICAL, Duration.ofHours(4),
-                Priority.HIGH, Duration.ofHours(8),
-                Priority.MEDIUM, Duration.ofHours(24),
-                Priority.LOW, Duration.ofHours(72))), Clock.fixed(T0, ZoneOffset.UTC),
+        SlaCalculator businessSla = new SlaCalculator(PROPERTIES, Clock.fixed(T0, ZoneOffset.UTC),
                 new BusinessCalendar(ZoneId.of("America/Sao_Paulo"), LocalTime.of(8, 0), LocalTime.of(18, 0),
                         EnumSet.range(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), Set.of()));
         // Friday 2026-01-09 at 10:00 (Sao Paulo); the ticket waits for the requester over the weekend.
