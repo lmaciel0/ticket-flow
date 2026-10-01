@@ -40,7 +40,11 @@ public class SlaCalculator {
         return properties.firstResponseFor(priority);
     }
 
-    /** Same calendar as the resolution deadline; never paused (a ticket only leaves OPEN by being assigned). */
+    /**
+     * Same calendar as the resolution deadline, but pauses do not extend it: the clock keeps running while the
+     * ticket waits for the requester. That rarely matters, because leaving OPEN usually means being assigned,
+     * which is the first response; only a ticket its own requester took can be waiting with no response yet.
+     */
     public Instant firstResponseDueAt(Instant createdAt, Priority priority) {
         return after(createdAt, firstResponseDeadlineFor(priority));
     }
