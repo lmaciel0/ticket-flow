@@ -22,6 +22,9 @@ function ticket(status: TicketStatus, assigneeId: number | null = agent.id): Tic
     resolvedAt: null,
     slaBreached: null,
     sla: 'ON_TRACK',
+    firstResponseDueAt: null,
+    firstRespondedAt: null,
+    firstResponse: null,
     version: 0,
   }
 }

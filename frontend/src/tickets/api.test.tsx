@@ -21,6 +21,9 @@ const ticket: Ticket = {
   resolvedAt: null,
   slaBreached: null,
   sla: 'ON_TRACK',
+  firstResponseDueAt: null,
+  firstRespondedAt: null,
+  firstResponse: null,
   version: 3,
 }
 

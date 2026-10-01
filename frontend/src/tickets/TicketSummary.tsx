@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Ticket } from '../api/types'
 import { formatDateTime } from '../shared/format'
 import { PRIORITY_COLORS, PRIORITY_LABELS, STATUS_COLORS, STATUS_LABELS } from '../shared/labels'
+import { FirstResponseBadge } from './FirstResponseBadge'
 import { SlaBadge } from './SlaBadge'
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -33,6 +34,11 @@ export function TicketSummary({ ticket }: { ticket: Ticket }) {
         <Field label="SLA">
           <SlaBadge sla={ticket.sla} dueAt={ticket.dueAt} />
         </Field>
+        {ticket.firstResponse && (
+          <Field label="1ª resposta">
+            <FirstResponseBadge indicator={ticket.firstResponse} dueAt={ticket.firstResponseDueAt} />
+          </Field>
+        )}
         <Field label="Prazo">
           <Text size="sm">{formatDateTime(ticket.dueAt)}</Text>
         </Field>

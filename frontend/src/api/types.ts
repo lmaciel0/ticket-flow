@@ -10,6 +10,9 @@ export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
 export type SlaIndicator = 'ON_TRACK' | 'AT_RISK' | 'OVERDUE' | 'PAUSED' | 'MET' | 'BREACHED'
 
+/** null in a Ticket means the metric does not apply (old ticket, or nobody but the requester acted on it). */
+export type FirstResponseIndicator = 'PENDING' | 'OVERDUE' | 'MET' | 'BREACHED'
+
 export type SlaFilter = 'OVERDUE' | 'AT_RISK'
 
 export type HistoryEventType =
@@ -60,6 +63,9 @@ export interface Ticket {
   resolvedAt: string | null
   slaBreached: boolean | null
   sla: SlaIndicator
+  firstResponseDueAt: string | null
+  firstRespondedAt: string | null
+  firstResponse: FirstResponseIndicator | null
   version: number
 }
 
