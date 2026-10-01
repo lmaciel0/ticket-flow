@@ -36,6 +36,14 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.CONFLICT, detail);
     }
 
+    public static ApiException preconditionFailed(String detail) {
+        return new ApiException(HttpStatus.PRECONDITION_FAILED, detail);
+    }
+
+    public static ApiException preconditionRequired(String detail) {
+        return new ApiException(HttpStatus.PRECONDITION_REQUIRED, detail);
+    }
+
     public static ApiException payloadTooLarge(String detail) {
         return new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, detail);
     }

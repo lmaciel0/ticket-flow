@@ -46,14 +46,16 @@ class CommentApiTest extends IntegrationTest {
         return mvc.perform(post("/api/tickets/{id}/status", ticketId)
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"%s\", \"version\": %d}".formatted(status, version)));
+                .header("If-Match", etag(version))
+                .content("{\"status\": \"%s\"}".formatted(status)));
     }
 
     void assignToBrunoAndAskRequester() throws Exception {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
         changeStatus(bruno, "WAITING_REQUESTER", 1).andExpect(status().isOk());
     }
@@ -110,7 +112,8 @@ class CommentApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
         changeStatus(bruno, "RESOLVED", 1).andExpect(status().isOk());
         changeStatus(ana, "CLOSED", 2).andExpect(status().isOk());

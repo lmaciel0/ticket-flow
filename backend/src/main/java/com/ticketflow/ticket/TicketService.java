@@ -69,7 +69,7 @@ public class TicketService {
         return PageResponse.from(tickets.findAll(spec, pageable).map(this::toResponse));
     }
 
-    public TicketResponse assign(Long id, AssignRequest request, AuthUser authUser) {
+    public TicketResponse assign(Long id, AssignRequest request, long expectedVersion, AuthUser authUser) {
         Ticket ticket = findVisible(id, authUser);
         if (!authUser.isManager()) {
             if (!authUser.id().equals(request.assigneeId())) {
@@ -82,7 +82,7 @@ public class TicketService {
         if (!ticket.getStatus().isActive()) {
             throw ApiException.conflict("Chamados resolvidos ou fechados não podem ser atribuídos.");
         }
-        requireVersion(ticket, request.version());
+        requireVersion(ticket, expectedVersion);
         User assignee = users.findById(request.assigneeId())
                 .filter(User::canBeAssigned)
                 .orElseThrow(() -> ApiException.badRequest("Responsável inválido."));
@@ -102,14 +102,15 @@ public class TicketService {
         return flushAndMap(ticket);
     }
 
-    public TicketResponse changeStatus(Long id, ChangeStatusRequest request, AuthUser authUser) {
+    public TicketResponse changeStatus(Long id, ChangeStatusRequest request, long expectedVersion,
+            AuthUser authUser) {
         Ticket ticket = findVisible(id, authUser);
         TicketStatus target = request.status();
         if (ticket.getStatus() == TicketStatus.OPEN && target == TicketStatus.IN_PROGRESS) {
             throw ApiException.conflict("Para iniciar o atendimento, atribua o chamado a alguém.");
         }
         requireStatusPermission(ticket, authUser);
-        requireVersion(ticket, request.version());
+        requireVersion(ticket, expectedVersion);
 
         Instant now = clock.instant();
         TicketStatus oldStatus = ticket.getStatus();
@@ -118,7 +119,7 @@ public class TicketService {
         return flushAndMap(ticket);
     }
 
-    public TicketResponse update(Long id, UpdateTicketRequest request, AuthUser authUser) {
+    public TicketResponse update(Long id, UpdateTicketRequest request, long expectedVersion, AuthUser authUser) {
         Ticket ticket = findVisible(id, authUser);
         if (!authUser.isManager() && !ticket.isAssignedTo(authUser.id())) {
             throw ApiException.forbidden("Só o responsável pelo chamado ou um gestor pode alterá-lo.");
@@ -126,7 +127,7 @@ public class TicketService {
         if (ticket.getStatus() == TicketStatus.CLOSED) {
             throw ApiException.conflict("Chamados fechados não podem ser alterados.");
         }
-        requireVersion(ticket, request.version());
+        requireVersion(ticket, expectedVersion);
 
         User actor = users.getCurrent(authUser);
         Instant now = clock.instant();
@@ -174,10 +175,10 @@ public class TicketService {
         }
     }
 
-    /** The client sends the version it read; if someone changed the ticket since, we refuse. */
+    /** The client sends, in If-Match, the version it read; if someone changed the ticket since, we refuse. */
     private static void requireVersion(Ticket ticket, long expectedVersion) {
         if (ticket.getVersion() != expectedVersion) {
-            throw ApiException.conflict(STALE_VERSION);
+            throw ApiException.preconditionFailed(STALE_VERSION);
         }
     }
 

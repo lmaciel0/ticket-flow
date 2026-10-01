@@ -122,4 +122,9 @@ public abstract class IntegrationTest {
     protected static long readLong(String json, String path) {
         return ((Number) JsonPath.read(json, path)).longValue();
     }
+
+    /** The If-Match value for a ticket version, as the API's ETag header writes it: "3". */
+    protected static String etag(long version) {
+        return "\"" + version + "\"";
+    }
 }

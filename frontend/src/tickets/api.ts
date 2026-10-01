@@ -74,7 +74,8 @@ export function useCreateTicket() {
 /**
  * Every change to a ticket answers with the updated ticket (and its new version). We put it
  * straight into the cache, so the next action on the same screen already sends the new version.
- * On 409 (someone changed it first, or a rule refused it) we reload the ticket.
+ * On 409 (a rule refused it, or a concurrent change was caught while saving) or 412 (the version
+ * in If-Match is no longer current) we reload the ticket.
  */
 function useTicketChange<Variables>(ticketId: number, request: (variables: Variables) => Promise<Ticket>) {
   const queryClient = useQueryClient()
@@ -86,28 +87,35 @@ function useTicketChange<Variables>(ticketId: number, request: (variables: Varia
       void queryClient.invalidateQueries({ queryKey: ticketKeys.lists() })
     },
     onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) {
+      if (error instanceof ApiError && (error.status === 409 || error.status === 412)) {
         void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(ticketId) })
       }
     },
   })
 }
 
+/** The version on screen, as the API's ETag writes it: "only change it if it is still this version". */
+function ifMatch(version: number): Record<string, string> {
+  return { 'If-Match': `"${version}"` }
+}
+
 export function useChangeStatus(ticketId: number) {
-  return useTicketChange(ticketId, (body: { status: TicketStatus; version: number }) =>
-    api.post<Ticket>(`/tickets/${ticketId}/status`, body),
+  return useTicketChange(ticketId, ({ version, ...body }: { status: TicketStatus; version: number }) =>
+    api.post<Ticket>(`/tickets/${ticketId}/status`, body, ifMatch(version)),
   )
 }
 
 export function useAssignTicket(ticketId: number) {
-  return useTicketChange(ticketId, (body: { assigneeId: number; version: number }) =>
-    api.post<Ticket>(`/tickets/${ticketId}/assign`, body),
+  return useTicketChange(ticketId, ({ version, ...body }: { assigneeId: number; version: number }) =>
+    api.post<Ticket>(`/tickets/${ticketId}/assign`, body, ifMatch(version)),
   )
 }
 
 export function useUpdateTicket(ticketId: number) {
-  return useTicketChange(ticketId, (body: { priority?: Priority; categoryId?: number; version: number }) =>
-    api.patch<Ticket>(`/tickets/${ticketId}`, body),
+  return useTicketChange(
+    ticketId,
+    ({ version, ...body }: { priority?: Priority; categoryId?: number; version: number }) =>
+      api.patch<Ticket>(`/tickets/${ticketId}`, body, ifMatch(version)),
   )
 }
 

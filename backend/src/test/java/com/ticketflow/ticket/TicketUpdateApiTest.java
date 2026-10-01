@@ -33,20 +33,22 @@ class TicketUpdateApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
     }
 
-    ResultActions patchTicket(User actor, String json) throws Exception {
+    ResultActions patchTicket(User actor, long version, String json) throws Exception {
         return mvc.perform(patch("/api/tickets/{id}", ticketId)
                 .header("Authorization", bearer(actor))
+                .header("If-Match", etag(version))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
     }
 
     @Test
     void assigneeChangesPriorityAndDeadlineFollows() throws Exception {
-        patchTicket(bruno, "{\"priority\": \"CRITICAL\", \"version\": 1}")
+        patchTicket(bruno, 1, "{\"priority\": \"CRITICAL\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.priority").value("CRITICAL"))
                 .andExpect(jsonPath("$.dueAt").value(clock.instant().plus(Duration.ofHours(4)).toString()))
@@ -55,7 +57,7 @@ class TicketUpdateApiTest extends IntegrationTest {
 
     @Test
     void managerChangesCategoryAndHistoryRecordsNames() throws Exception {
-        patchTicket(carla, "{\"categoryId\": %d, \"version\": 1}".formatted(categoryId("Software")))
+        patchTicket(carla, 1, "{\"categoryId\": %d}".formatted(categoryId("Software")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.category.name").value("Software"));
 
@@ -67,13 +69,13 @@ class TicketUpdateApiTest extends IntegrationTest {
 
     @Test
     void otherAgentsAndRequestersCannotChangeTheTicket() throws Exception {
-        patchTicket(diego, "{\"priority\": \"HIGH\", \"version\": 1}").andExpect(status().isForbidden());
-        patchTicket(ana, "{\"priority\": \"HIGH\", \"version\": 1}").andExpect(status().isForbidden());
+        patchTicket(diego, 1, "{\"priority\": \"HIGH\"}").andExpect(status().isForbidden());
+        patchTicket(ana, 1, "{\"priority\": \"HIGH\"}").andExpect(status().isForbidden());
     }
 
     @Test
-    void staleVersionIsConflict() throws Exception {
-        patchTicket(bruno, "{\"priority\": \"HIGH\", \"version\": 0}").andExpect(status().isConflict());
+    void staleVersionIsPreconditionFailed() throws Exception {
+        patchTicket(bruno, 0, "{\"priority\": \"HIGH\"}").andExpect(status().isPreconditionFailed());
     }
 
     @Test
@@ -81,15 +83,17 @@ class TicketUpdateApiTest extends IntegrationTest {
         long v = readLong(mvc.perform(post("/api/tickets/{id}/status", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"RESOLVED\", \"version\": 1}"))
+                        .header("If-Match", etag(1))
+                        .content("{\"status\": \"RESOLVED\"}"))
                 .andReturn().getResponse().getContentAsString(), "$.version");
         v = readLong(mvc.perform(post("/api/tickets/{id}/status", ticketId)
                         .header("Authorization", bearer(ana))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"CLOSED\", \"version\": %d}".formatted(v)))
+                        .header("If-Match", etag(v))
+                        .content("{\"status\": \"CLOSED\"}"))
                 .andReturn().getResponse().getContentAsString(), "$.version");
 
-        patchTicket(carla, "{\"priority\": \"HIGH\", \"version\": %d}".formatted(v))
+        patchTicket(carla, v, "{\"priority\": \"HIGH\"}")
                 .andExpect(status().isConflict());
     }
 }

@@ -11,7 +11,14 @@ import com.ticketflow.ticket.TicketDtos.UpdateTicketRequest;
 import com.ticketflow.ticket.export.ExportFormat;
 import com.ticketflow.ticket.export.TicketExportService;
 import com.ticketflow.ticket.export.TicketExportService.TicketExport;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.List;
 import java.util.Set;
 import org.springframework.data.domain.PageRequest;
@@ -29,9 +36,9 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -42,6 +49,16 @@ public class TicketController {
     private static final int MAX_PAGE_SIZE = 100;
     /** Tells the client that more tickets matched than fit in the exported file. */
     public static final String TRUNCATED_HEADER = "X-Export-Truncated";
+    private static final String IF_MATCH_DOC = "ETag do chamado recebido no GET, por exemplo \"3\".";
+
+    /** Swagger: the errors every If-Match change can answer, documented once for the three endpoints. */
+    @Target(ElementType.METHOD)
+    @Retention(RetentionPolicy.RUNTIME)
+    @ApiResponse(responseCode = "200", description = "Chamado alterado; o cabeçalho ETag traz a nova versão.")
+    @ApiResponse(responseCode = "412", description = "O chamado foi alterado por outra pessoa (If-Match desatualizado).")
+    @ApiResponse(responseCode = "428", description = "Faltou o cabeçalho If-Match.")
+    @interface PreconditionResponses {
+    }
 
     private final TicketService tickets;
     private final TicketExportService exports;
@@ -52,9 +69,9 @@ public class TicketController {
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public TicketResponse create(@Valid @RequestBody CreateTicketRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return tickets.create(request, AuthUser.from(jwt));
+    public ResponseEntity<TicketResponse> create(@Valid @RequestBody CreateTicketRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return withETag(ResponseEntity.status(HttpStatus.CREATED), tickets.create(request, AuthUser.from(jwt)));
     }
 
     @GetMapping
@@ -100,28 +117,57 @@ public class TicketController {
     }
 
     @GetMapping("/{id}")
-    public TicketResponse get(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
-        return tickets.get(id, AuthUser.from(jwt));
+    public ResponseEntity<TicketResponse> get(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        return withETag(ResponseEntity.ok(), tickets.get(id, AuthUser.from(jwt)));
     }
 
     @PatchMapping("/{id}")
+    @PreconditionResponses
     @PreAuthorize("hasAnyRole('AGENT', 'MANAGER')")
-    public TicketResponse update(@PathVariable Long id, @Valid @RequestBody UpdateTicketRequest request,
+    public ResponseEntity<TicketResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateTicketRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
-        return tickets.update(id, request, AuthUser.from(jwt));
+        return withETag(ResponseEntity.ok(),
+                tickets.update(id, request, expectedVersion(ifMatch), AuthUser.from(jwt)));
     }
 
     @PostMapping("/{id}/assign")
+    @PreconditionResponses
     @PreAuthorize("hasAnyRole('AGENT', 'MANAGER')")
-    public TicketResponse assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request,
+    public ResponseEntity<TicketResponse> assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
-        return tickets.assign(id, request, AuthUser.from(jwt));
+        return withETag(ResponseEntity.ok(),
+                tickets.assign(id, request, expectedVersion(ifMatch), AuthUser.from(jwt)));
     }
 
     @PostMapping("/{id}/status")
-    public TicketResponse changeStatus(@PathVariable Long id, @Valid @RequestBody ChangeStatusRequest request,
+    @PreconditionResponses
+    public ResponseEntity<TicketResponse> changeStatus(@PathVariable Long id,
+            @Valid @RequestBody ChangeStatusRequest request,
+            @Parameter(in = ParameterIn.HEADER, required = true, description = IF_MATCH_DOC)
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @AuthenticationPrincipal Jwt jwt) {
-        return tickets.changeStatus(id, request, AuthUser.from(jwt));
+        return withETag(ResponseEntity.ok(),
+                tickets.changeStatus(id, request, expectedVersion(ifMatch), AuthUser.from(jwt)));
+    }
+
+    /**
+     * If-Match is required on every change: without it the API cannot tell whether the client saw the
+     * latest version. Missing is 428 (RFC 6585); malformed is 400; a stale version is 412, in the service.
+     * {@code required = false} is deliberate: with true, Spring would answer 400 on its own.
+     */
+    private static long expectedVersion(String ifMatch) {
+        if (ifMatch == null) {
+            throw ApiException.preconditionRequired(TicketETag.MISSING_IF_MATCH);
+        }
+        return TicketETag.parse(ifMatch);
+    }
+
+    private static ResponseEntity<TicketResponse> withETag(ResponseEntity.BodyBuilder response, TicketResponse ticket) {
+        return response.eTag(TicketETag.format(ticket.version())).body(ticket);
     }
 
     /** Only whitelisted fields can be sorted; the id is a tie-breaker so pages never overlap. */

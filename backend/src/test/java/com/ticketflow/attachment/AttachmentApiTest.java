@@ -104,17 +104,20 @@ class AttachmentApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/tickets/{id}/status", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"RESOLVED\", \"version\": 1}"))
+                        .header("If-Match", etag(1))
+                        .content("{\"status\": \"RESOLVED\"}"))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/tickets/{id}/status", ticketId)
                         .header("Authorization", bearer(ana))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"CLOSED\", \"version\": 2}"))
+                        .header("If-Match", etag(2))
+                        .content("{\"status\": \"CLOSED\"}"))
                 .andExpect(status().isOk());
 
         upload(ana, "tarde.pdf", PDF).andExpect(status().isConflict());

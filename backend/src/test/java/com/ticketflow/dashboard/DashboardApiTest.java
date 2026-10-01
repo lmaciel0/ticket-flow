@@ -32,13 +32,15 @@ class DashboardApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
         clock.advance(workTime);
         mvc.perform(post("/api/tickets/{id}/status", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"RESOLVED\", \"version\": 1}"))
+                        .header("If-Match", etag(1))
+                        .content("{\"status\": \"RESOLVED\"}"))
                 .andExpect(status().isOk());
     }
 
