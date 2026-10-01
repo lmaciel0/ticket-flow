@@ -94,7 +94,7 @@ public class TicketService {
         Instant now = clock.instant();
         TicketStatus oldStatus = ticket.getStatus();
         String oldAssignee = ticket.getAssignee() == null ? null : ticket.getAssignee().getName();
-        ticket.assign(assignee, now, sla);
+        ticket.assign(assignee, actor, now, sla);
         events.publishEvent(new TicketAssigned(ticket, actor, now, oldAssignee, assignee.getName()));
         if (ticket.getStatus() != oldStatus) {
             events.publishEvent(new TicketStatusChanged(ticket, actor, now, oldStatus, ticket.getStatus()));
@@ -158,8 +158,10 @@ public class TicketService {
     }
 
     public TicketResponse toResponse(Ticket ticket) {
-        return TicketResponse.from(ticket, sla.indicator(ticket.getStatus(), ticket.getPriority(),
-                ticket.getDueAt(), ticket.getSlaBreached()));
+        return TicketResponse.from(ticket,
+                sla.indicator(ticket.getStatus(), ticket.getPriority(), ticket.getDueAt(), ticket.getSlaBreached()),
+                sla.firstResponseIndicator(ticket.getStatus(), ticket.getFirstResponseDueAt(),
+                        ticket.getFirstRespondedAt()));
     }
 
     /** Closing or reopening a RESOLVED ticket is the requester's call; everything else is the assignee's. */

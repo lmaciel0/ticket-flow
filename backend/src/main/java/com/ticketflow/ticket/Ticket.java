@@ -55,6 +55,11 @@ public class Ticket {
 
     private Boolean slaBreached;
 
+    /** Null for tickets created before the first-response metric existed. */
+    private Instant firstResponseDueAt;
+
+    private Instant firstRespondedAt;
+
     /** Optimistic locking: Hibernate increments it on every update and rejects stale writes. */
     @Version
     private long version;
@@ -73,14 +78,27 @@ public class Ticket {
         this.status = TicketStatus.OPEN;
         this.createdAt = createdAt;
         this.dueAt = sla.dueAt(createdAt, priority, 0);
+        this.firstResponseDueAt = sla.firstResponseDueAt(createdAt, priority);
     }
 
     /** Sets the responsible person. An OPEN ticket starts being worked on. */
-    public void assign(User newAssignee, Instant now, SlaCalculator sla) {
+    public void assign(User newAssignee, User actor, Instant now, SlaCalculator sla) {
         this.assignee = newAssignee;
+        recordFirstResponse(actor, now);
         if (status == TicketStatus.OPEN) {
             changeStatus(TicketStatus.IN_PROGRESS, now, sla);
         }
+    }
+
+    /**
+     * The first time someone other than the requester takes or answers the ticket. Later calls are
+     * ignored, and so are tickets without a deadline (created before the metric existed).
+     */
+    public void recordFirstResponse(User by, Instant at) {
+        if (firstRespondedAt != null || firstResponseDueAt == null || isRequester(by)) {
+            return;
+        }
+        firstRespondedAt = at;
     }
 
     /** Moves the ticket through its lifecycle and keeps the SLA clock in sync. */
@@ -111,6 +129,10 @@ public class Ticket {
     public void changePriority(Priority newPriority, SlaCalculator sla) {
         this.priority = newPriority;
         this.dueAt = sla.dueAt(createdAt, newPriority, pausedTotalSeconds);
+        if (firstRespondedAt == null && firstResponseDueAt != null) {
+            // Once answered, the first-response result is final.
+            this.firstResponseDueAt = sla.firstResponseDueAt(createdAt, newPriority);
+        }
     }
 
     public void changeCategory(Category newCategory) {
@@ -123,6 +145,11 @@ public class Ticket {
 
     public boolean isAssignedTo(Long userId) {
         return assignee != null && assignee.getId().equals(userId);
+    }
+
+    /** Same id for entities loaded separately; same instance in unit tests, where nothing has an id yet. */
+    private boolean isRequester(User user) {
+        return user == requester || (user.getId() != null && user.getId().equals(requester.getId()));
     }
 
     public Long getId() {
@@ -179,6 +206,14 @@ public class Ticket {
 
     public Boolean getSlaBreached() {
         return slaBreached;
+    }
+
+    public Instant getFirstResponseDueAt() {
+        return firstResponseDueAt;
+    }
+
+    public Instant getFirstRespondedAt() {
+        return firstRespondedAt;
     }
 
     public long getVersion() {

@@ -67,6 +67,10 @@ public class CommentService {
             return CommentResponse.from(comment);
         }
         events.publishEvent(new CommentAdded(ticket, author, now));
+        if (author.canBeAssigned()) {
+            // A public answer from the team; the ticket itself ignores it when the author is the requester.
+            ticket.recordFirstResponse(author, now);
+        }
 
         // The requester answered what the agent asked: the ticket goes back to work automatically.
         if (ticket.getStatus() == TicketStatus.WAITING_REQUESTER && ticket.isRequestedBy(author.getId())) {

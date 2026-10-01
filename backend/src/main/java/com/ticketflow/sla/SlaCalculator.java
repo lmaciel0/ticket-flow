@@ -36,6 +36,15 @@ public class SlaCalculator {
         return properties.deadlineFor(priority);
     }
 
+    public Duration firstResponseDeadlineFor(Priority priority) {
+        return properties.firstResponseFor(priority);
+    }
+
+    /** Same calendar as the resolution deadline; never paused (a ticket only leaves OPEN by being assigned). */
+    public Instant firstResponseDueAt(Instant createdAt, Priority priority) {
+        return after(createdAt, firstResponseDeadlineFor(priority));
+    }
+
     /** A ticket is "at risk" when less than 25% of its deadline is left. */
     public Duration riskWindow(Priority priority) {
         return deadlineFor(priority).dividedBy(4);
@@ -43,7 +52,7 @@ public class SlaCalculator {
 
     /** {@code pausedSeconds} is SLA-clock time (see {@link #elapsed}), so it extends the deadline 1:1. */
     public Instant dueAt(Instant createdAt, Priority priority, long pausedSeconds) {
-        return advance(createdAt, deadlineFor(priority).plusSeconds(pausedSeconds));
+        return after(createdAt, deadlineFor(priority).plusSeconds(pausedSeconds));
     }
 
     /** SLA-clock time between two instants: wall time, or only working hours when a calendar is set. */
@@ -58,10 +67,11 @@ public class SlaCalculator {
 
     /** A running ticket due before this instant has less than its risk window left. */
     public Instant atRiskBefore(Instant now, Priority priority) {
-        return advance(now, riskWindow(priority));
+        return after(now, riskWindow(priority));
     }
 
-    private Instant advance(Instant start, Duration amount) {
+    /** The instant that is {@code amount} of SLA-clock time after {@code start}; the inverse of {@link #ago}. */
+    public Instant after(Instant start, Duration amount) {
         return calendar == null ? start.plus(amount) : calendar.plus(start, amount);
     }
 
@@ -80,5 +90,24 @@ public class SlaCalculator {
             return SlaIndicator.AT_RISK;
         }
         return SlaIndicator.ON_TRACK;
+    }
+
+    /**
+     * {@code null} means the metric does not apply: the ticket predates it (no deadline), or it was
+     * finished with nobody but the requester acting on it.
+     */
+    @Nullable
+    public FirstResponseIndicator firstResponseIndicator(TicketStatus status, @Nullable Instant dueAt,
+            @Nullable Instant respondedAt) {
+        if (dueAt == null) {
+            return null;
+        }
+        if (respondedAt != null) {
+            return respondedAt.isBefore(dueAt) ? FirstResponseIndicator.MET : FirstResponseIndicator.BREACHED;
+        }
+        if (!status.isActive()) {
+            return null;
+        }
+        return clock.instant().isBefore(dueAt) ? FirstResponseIndicator.PENDING : FirstResponseIndicator.OVERDUE;
     }
 }

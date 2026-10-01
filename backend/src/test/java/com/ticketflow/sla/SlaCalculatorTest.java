@@ -17,11 +17,19 @@ class SlaCalculatorTest {
 
     static final Instant NOW = Instant.parse("2026-01-10T12:00:00Z");
 
-    static final SlaProperties PROPERTIES = new SlaProperties(Map.of(
+    static final Map<Priority, Duration> DEADLINES = Map.of(
             Priority.CRITICAL, Duration.ofHours(4),
             Priority.HIGH, Duration.ofHours(8),
             Priority.MEDIUM, Duration.ofHours(24),
-            Priority.LOW, Duration.ofHours(72)));
+            Priority.LOW, Duration.ofHours(72));
+
+    static final Map<Priority, Duration> FIRST_RESPONSE = Map.of(
+            Priority.CRITICAL, Duration.ofMinutes(30),
+            Priority.HIGH, Duration.ofHours(1),
+            Priority.MEDIUM, Duration.ofHours(4),
+            Priority.LOW, Duration.ofHours(8));
+
+    static final SlaProperties PROPERTIES = new SlaProperties(DEADLINES, FIRST_RESPONSE);
 
     final SlaCalculator calculator = new SlaCalculator(PROPERTIES, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -71,8 +79,54 @@ class SlaCalculatorTest {
 
     @Test
     void propertiesRequireEveryPriority() {
-        assertThatThrownBy(() -> new SlaProperties(Map.of(Priority.LOW, Duration.ofHours(1))))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new SlaProperties(Map.of(Priority.LOW, Duration.ofHours(1)), FIRST_RESPONSE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SLA deadline");
+    }
+
+    @Test
+    void propertiesRequireEveryPriorityForTheFirstResponse() {
+        assertThatThrownBy(() -> new SlaProperties(DEADLINES, Map.of(Priority.LOW, Duration.ofHours(1))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("first response");
+    }
+
+    @Test
+    void firstResponseDeadlineComesFromItsOwnTable() {
+        Instant createdAt = Instant.parse("2026-01-10T08:00:00Z");
+
+        assertThat(calculator.firstResponseDueAt(createdAt, Priority.CRITICAL))
+                .isEqualTo(Instant.parse("2026-01-10T08:30:00Z"));
+        assertThat(calculator.firstResponseDueAt(createdAt, Priority.LOW))
+                .isEqualTo(Instant.parse("2026-01-10T16:00:00Z"));
+    }
+
+    @Test
+    void firstResponseIndicatorFollowsTheClockUntilSomeoneAnswers() {
+        assertThat(calculator.firstResponseIndicator(TicketStatus.OPEN, NOW.plusSeconds(1), null))
+                .isEqualTo(FirstResponseIndicator.PENDING);
+        assertThat(calculator.firstResponseIndicator(TicketStatus.OPEN, NOW, null))
+                .isEqualTo(FirstResponseIndicator.OVERDUE);
+        assertThat(calculator.firstResponseIndicator(TicketStatus.IN_PROGRESS, NOW, NOW.minusSeconds(1)))
+                .isEqualTo(FirstResponseIndicator.MET);
+        assertThat(calculator.firstResponseIndicator(TicketStatus.IN_PROGRESS, NOW, NOW))
+                .isEqualTo(FirstResponseIndicator.BREACHED);
+        assertThat(calculator.firstResponseIndicator(TicketStatus.CLOSED, NOW, NOW.minusSeconds(1)))
+                .isEqualTo(FirstResponseIndicator.MET);
+    }
+
+    @Test
+    void firstResponseIndicatorIsNullWhenTheMetricDoesNotApply() {
+        // Created before the metric existed.
+        assertThat(calculator.firstResponseIndicator(TicketStatus.OPEN, null, null)).isNull();
+        // Finished with nobody but the requester acting on it.
+        assertThat(calculator.firstResponseIndicator(TicketStatus.RESOLVED, NOW.minusSeconds(1), null)).isNull();
+        assertThat(calculator.firstResponseIndicator(TicketStatus.CLOSED, NOW.plusSeconds(60), null)).isNull();
+    }
+
+    @Test
+    void afterWithoutCalendarIsPlainAddition() {
+        assertThat(calculator.after(NOW, Duration.ofHours(2))).isEqualTo(NOW.plus(Duration.ofHours(2)));
     }
 
     @Nested
@@ -114,6 +168,20 @@ class SlaCalculatorTest {
             Instant dueMonday8h30 = Instant.parse("2026-01-12T11:30:00Z");
             assertThat(businessSla.indicator(TicketStatus.IN_PROGRESS, Priority.HIGH, dueMonday8h30, null))
                     .isEqualTo(SlaIndicator.AT_RISK);
+        }
+
+        @Test
+        void firstResponseDeadlineSkipsTheWeekend() {
+            // MEDIUM = 4h: 1h on Friday + 3h on Monday -> Monday 11:00.
+            assertThat(businessSla.firstResponseDueAt(FRIDAY_17H, Priority.MEDIUM))
+                    .isEqualTo(Instant.parse("2026-01-12T14:00:00Z"));
+        }
+
+        @Test
+        void afterCountsWorkingTimeOnly() {
+            // 2h of working time from Friday 17:00: 1h on Friday + 1h on Monday -> Monday 09:00.
+            assertThat(businessSla.after(FRIDAY_17H, Duration.ofHours(2)))
+                    .isEqualTo(Instant.parse("2026-01-12T12:00:00Z"));
         }
 
         @Test

@@ -55,6 +55,11 @@ app:
       HIGH: 8h
       MEDIUM: 24h
       LOW: 72h
+    first-response:
+      CRITICAL: 30m
+      HIGH: 1h
+      MEDIUM: 4h
+      LOW: 8h
     business-hours:
       # Off by default (the SLA clock runs 24/7). When on, only Monday-Friday 08:00-18:00
       # (app.zone) counts; start, end, days and holidays can be overridden here.

@@ -25,7 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** With business hours on, resetting the demo at night must still produce overdue and at-risk tickets. */
+/** With business hours on, resetting the demo at night must still produce every SLA situation. */
 @TestPropertySource(properties = "app.sla.business-hours.enabled=true")
 class DemoDataSeederBusinessHoursTest extends IntegrationTest {
 
@@ -38,7 +38,7 @@ class DemoDataSeederBusinessHoursTest extends IntegrationTest {
     @Autowired TransactionTemplate transaction;
 
     @Test
-    void demoResetInTheMiddleOfTheNightStillShowsOverdueAndAtRiskTickets() throws Exception {
+    void demoResetInTheMiddleOfTheNightStillShowsEverySituation() throws Exception {
         // The next Saturday at 03:00 in Sao Paulo: the service is closed, no working time is passing.
         ZonedDateTime saturdayNight = clock.instant().atZone(ZoneId.of("America/Sao_Paulo"))
                 .with(TemporalAdjusters.next(DayOfWeek.SATURDAY)).truncatedTo(ChronoUnit.DAYS).withHour(3);
@@ -60,5 +60,11 @@ class DemoDataSeederBusinessHoursTest extends IntegrationTest {
                     .andReturn().getResponse().getContentAsString();
             assertThat(readLong(body, "$.totalElements")).as(situation).isPositive();
         }
+
+        String all = mvc.perform(get("/api/tickets").param("size", "100").header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<String> firstResponses = JsonPath.read(all, "$.content[*].firstResponse");
+        assertThat(firstResponses).contains("PENDING", "OVERDUE", "MET", "BREACHED");
     }
 }

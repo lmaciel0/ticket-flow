@@ -1,4 +1,4 @@
-import type { Priority, Role, SlaIndicator, TicketStatus } from '../api/types'
+import type { FirstResponseIndicator, Priority, Role, SlaIndicator, TicketStatus } from '../api/types'
 
 // Record<Union, string> forces one entry per value: adding a status to the union
 // without a label here is a compile error.
@@ -47,6 +47,20 @@ export const SLA_COLORS: Record<SlaIndicator, string> = {
   AT_RISK: 'yellow',
   OVERDUE: 'red',
   PAUSED: 'gray',
+  MET: 'teal',
+  BREACHED: 'red',
+}
+
+export const FIRST_RESPONSE_LABELS: Record<FirstResponseIndicator, string> = {
+  PENDING: 'Pendente',
+  OVERDUE: 'Atrasada',
+  MET: 'No prazo',
+  BREACHED: 'Fora do prazo',
+}
+
+export const FIRST_RESPONSE_COLORS: Record<FirstResponseIndicator, string> = {
+  PENDING: 'blue',
+  OVERDUE: 'red',
   MET: 'teal',
   BREACHED: 'red',
 }

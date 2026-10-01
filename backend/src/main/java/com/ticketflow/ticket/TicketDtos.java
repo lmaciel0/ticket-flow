@@ -1,6 +1,7 @@
 package com.ticketflow.ticket;
 
 import com.ticketflow.category.CategoryResponse;
+import com.ticketflow.sla.FirstResponseIndicator;
 import com.ticketflow.sla.SlaIndicator;
 import com.ticketflow.user.UserSummary;
 import jakarta.validation.constraints.NotBlank;
@@ -45,14 +46,18 @@ public final class TicketDtos {
             Instant resolvedAt,
             Boolean slaBreached,
             SlaIndicator sla,
+            Instant firstResponseDueAt,
+            Instant firstRespondedAt,
+            FirstResponseIndicator firstResponse,
             long version) {
 
-        public static TicketResponse from(Ticket ticket, SlaIndicator sla) {
+        public static TicketResponse from(Ticket ticket, SlaIndicator sla, FirstResponseIndicator firstResponse) {
             return new TicketResponse(ticket.getId(), ticket.getTitle(), ticket.getDescription(),
                     ticket.getPriority(), ticket.getStatus(), CategoryResponse.from(ticket.getCategory()),
                     UserSummary.from(ticket.getRequester()), UserSummary.from(ticket.getAssignee()),
                     ticket.getCreatedAt(), ticket.getDueAt(), ticket.getResolvedAt(), ticket.getSlaBreached(),
-                    sla, ticket.getVersion());
+                    sla, ticket.getFirstResponseDueAt(), ticket.getFirstRespondedAt(), firstResponse,
+                    ticket.getVersion());
         }
     }
 }
