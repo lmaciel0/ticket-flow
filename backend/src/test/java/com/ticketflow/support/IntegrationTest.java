@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -32,6 +33,8 @@ import org.springframework.web.context.WebApplicationContext;
  * Every test starts with an empty database (categories and Flyway's history are kept).
  */
 @SpringBootTest
+// The API tests log in many times from 127.0.0.1; LoginRateLimitApiTest turns the limit back on.
+@TestPropertySource(properties = "app.rate-limit.enabled=false")
 @Import({TestcontainersConfiguration.class, IntegrationTest.ClockConfiguration.class})
 public abstract class IntegrationTest {
 

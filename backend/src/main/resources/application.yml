@@ -23,6 +23,8 @@ spring:
 server:
   # Render sets PORT (10000 by default); locally and in docker compose it stays 8080.
   port: ${PORT:8080}
+  # Render's proxy forwards the client IP in X-Forwarded-For; Tomcat trusts it only from internal addresses.
+  forward-headers-strategy: native
   tomcat:
     max-swallow-size: 10MB
 
@@ -49,6 +51,14 @@ app:
     # Local development only. Production must set JWT_SECRET (at least 32 bytes).
     secret: ${JWT_SECRET:local-dev-secret-change-me-0123456789abcdef}
     ttl: 8h
+  rate-limit:
+    enabled: true
+    login:
+      capacity: 5
+      period: 1m
+    register:
+      capacity: 3
+      period: 1h
   sla:
     deadlines:
       CRITICAL: 4h

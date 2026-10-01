@@ -8,6 +8,7 @@ const FALLBACK_MESSAGES: Record<number, string> = {
   403: 'Você não tem permissão para esta ação.',
   404: 'Não encontrado.',
   413: 'O arquivo passa do limite de 5 MB.',
+  429: 'Muitas tentativas. Tente de novo em instantes.',
 }
 
 /** An error answered by the API (RFC 9457 ProblemDetail), or status 0 when the server was unreachable. */
