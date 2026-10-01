@@ -19,12 +19,15 @@ import com.ticketflow.ticket.TicketStatus;
 import com.ticketflow.user.Role;
 import com.ticketflow.user.User;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class HistoryEventListenerTest extends IntegrationTest {
@@ -84,11 +87,25 @@ class HistoryEventListenerTest extends IntegrationTest {
 
     @Test
     void rollbackTakesTheHistoryEntryWithIt() {
+        AtomicLong rowsWrittenBeforeTheFailure = new AtomicLong(-1);
+
         assertThatThrownBy(() -> inTransaction((ticket, actor) -> {
             events.publishEvent(new CommentAdded(ticket, actor, clock.instant()));
-            throw new IllegalStateException("boom");
+            // Registered after the event, so it runs after the listener already wrote the row; then the commit fails.
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void beforeCommit(boolean readOnly) {
+                    rowsWrittenBeforeTheFailure.set(historyRows());
+                    throw new IllegalStateException("commit fails after the history was written");
+                }
+            });
         })).isInstanceOf(IllegalStateException.class);
 
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket_history", Long.class)).isZero();
+        assertThat(rowsWrittenBeforeTheFailure).hasValue(1);
+        assertThat(historyRows()).isZero();
+    }
+
+    private long historyRows() {
+        return jdbc.queryForObject("SELECT count(*) FROM ticket_history", Long.class);
     }
 }
