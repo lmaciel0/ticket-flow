@@ -1,7 +1,7 @@
 # Rate limiting nas rotas públicas de autenticação (roadmap 3.1)
 
 - **Data:** 2026-10-01
-- **Status:** em revisão
+- **Status:** aprovada
 - **Autor:** Roberto Lucas
 - **Origem:** item 3.1 de `docs/roadmap-de-evolucao.md`
 
