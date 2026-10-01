@@ -5,6 +5,7 @@ import com.ticketflow.auth.JwtProperties;
 import com.ticketflow.user.User;
 import com.ticketflow.user.UserRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.util.List;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -34,6 +35,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 @Configuration
 @EnableMethodSecurity
@@ -41,8 +43,10 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ProblemAuthenticationEntryPoint entryPoint,
-            UserRepository users) throws Exception {
+            UserRepository users, RateLimitProperties rateLimit, Clock clock) throws Exception {
         http
+                // After CORS, so a 429 still reaches the frontend; before the controller, so no BCrypt is spent.
+                .addFilterAfter(new LoginRateLimitFilter(rateLimit, clock), CorsFilter.class)
                 // Stateless API with a Bearer token: there is no session cookie for CSRF to abuse.
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
@@ -81,7 +85,7 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", HttpHeaders.IF_MATCH));
         config.setExposedHeaders(List.of("Content-Disposition", TraceIdFilter.HEADER, "X-Export-Truncated",
-                HttpHeaders.ETAG));
+                HttpHeaders.ETAG, HttpHeaders.RETRY_AFTER));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
         return source;
