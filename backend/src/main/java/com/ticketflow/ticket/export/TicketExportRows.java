@@ -1,5 +1,6 @@
 package com.ticketflow.ticket.export;
 
+import com.ticketflow.sla.FirstResponseIndicator;
 import com.ticketflow.sla.SlaIndicator;
 import com.ticketflow.ticket.Priority;
 import com.ticketflow.ticket.TicketDtos.TicketResponse;
@@ -13,7 +14,7 @@ import java.util.List;
 final class TicketExportRows {
 
     static final List<String> HEADERS = List.of("Nº", "Título", "Status", "Prioridade", "Categoria", "Solicitante",
-            "Responsável", "Aberto em", "Prazo", "Resolvido em", "SLA");
+            "Responsável", "Aberto em", "Prazo", "Resolvido em", "SLA", "1ª resposta");
 
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
@@ -32,7 +33,8 @@ final class TicketExportRows {
                 dateTime(ticket.createdAt(), zone),
                 dateTime(ticket.dueAt(), zone),
                 dateTime(ticket.resolvedAt(), zone),
-                slaLabel(ticket.sla()));
+                slaLabel(ticket.sla()),
+                firstResponseLabel(ticket.firstResponse()));
     }
 
     static String dateTime(Instant instant, ZoneId zone) {
@@ -66,6 +68,19 @@ final class TicketExportRows {
             case PAUSED -> "Pausado";
             case MET -> "Cumprido";
             case BREACHED -> "Violado";
+        };
+    }
+
+    /** Empty when the metric does not apply (tickets older than it, or finished with no response). */
+    static String firstResponseLabel(FirstResponseIndicator firstResponse) {
+        if (firstResponse == null) {
+            return "";
+        }
+        return switch (firstResponse) {
+            case PENDING -> "Pendente";
+            case OVERDUE -> "Atrasada";
+            case MET -> "No prazo";
+            case BREACHED -> "Fora do prazo";
         };
     }
 }
