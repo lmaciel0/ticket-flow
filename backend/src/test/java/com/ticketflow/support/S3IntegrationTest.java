@@ -15,17 +15,21 @@ public abstract class S3IntegrationTest extends IntegrationTest {
     private static final int S3_PORT = 9090;
 
     protected static final GenericContainer<?> S3_MOCK =
-            new GenericContainer<>(DockerImageName.parse("adobe/s3mock:latest")).withExposedPorts(S3_PORT);
+            new GenericContainer<>(DockerImageName.parse("adobe/s3mock:5.2.3")).withExposedPorts(S3_PORT);
 
     static {
         S3_MOCK.start();
     }
 
+    /** Where the shared S3Mock answers; starts it on first use. */
+    public static String endpoint() {
+        return "http://%s:%d".formatted(S3_MOCK.getHost(), S3_MOCK.getMappedPort(S3_PORT));
+    }
+
     @DynamicPropertySource
     static void s3Properties(DynamicPropertyRegistry registry) {
         registry.add("app.attachments.storage", () -> "s3");
-        registry.add("app.attachments.s3.endpoint",
-                () -> "http://%s:%d".formatted(S3_MOCK.getHost(), S3_MOCK.getMappedPort(S3_PORT)));
+        registry.add("app.attachments.s3.endpoint", S3IntegrationTest::endpoint);
         registry.add("app.attachments.s3.access-key", () -> "test");
         registry.add("app.attachments.s3.secret-key", () -> "test");
         registry.add("app.attachments.s3.path-style", () -> "true");

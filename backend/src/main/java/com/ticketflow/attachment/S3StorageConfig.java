@@ -36,16 +36,24 @@ public class S3StorageConfig {
             builder.endpointOverride(URI.create(properties.endpoint()));
         }
         S3Client client = builder.build();
-        if (properties.createBucket()) {
-            createBucketIfMissing(client, properties.bucket());
-        }
+        ensureBucket(client, properties);
         return client;
     }
 
-    private static void createBucketIfMissing(S3Client client, String bucket) {
+    /**
+     * Reaches the bucket once at startup, so a wrong endpoint, wrong credentials or a missing bucket stop
+     * the application here instead of turning the first upload into a 500.
+     */
+    private static void ensureBucket(S3Client client, S3StorageProperties properties) {
+        String bucket = properties.bucket();
         try {
             client.headBucket(b -> b.bucket(bucket));
         } catch (NoSuchBucketException missing) {
+            if (!properties.createBucket()) {
+                throw new IllegalStateException(
+                        "Attachments bucket '%s' does not exist: create it or set S3_CREATE_BUCKET=true"
+                                .formatted(bucket), missing);
+            }
             client.createBucket(b -> b.bucket(bucket));
             log.info("Created attachments bucket {}", bucket);
         }
