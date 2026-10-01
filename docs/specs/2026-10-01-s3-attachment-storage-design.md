@@ -1,7 +1,9 @@
 # Adapter S3/MinIO para anexos (roadmap 1.3)
 
 - **Data:** 2026-10-01
-- **Status:** aguardando revisão
+- **Status:** implementado
+
+> **Mudança durante a implementação:** a imagem do MinIO deixou de ser publicada no Docker Hub (`minio/minio` não existe mais, e `quay.io/minio/minio` exige login). Com a aprovação do autor, os testes (Testcontainers) e o compose usam o **Adobe S3Mock** (`adobe/s3mock`), um servidor compatível com S3 feito para testes. O serviço do compose se chama `s3` (porta 9090) e o adapter não mudou: ele continua funcionando com AWS S3, MinIO, R2 e similares, trocando só o endpoint. Onde este documento diz "MinIO" para testes ou compose, leia "S3Mock".
 - **Autor:** Roberto Lucas
 - **Origem:** item 1.3 de `docs/roadmap-de-evolucao.md`
 

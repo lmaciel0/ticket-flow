@@ -26,6 +26,7 @@ Documento permanente com o catálogo de melhorias arquiteturais, segurança, ban
   - Benefício: Alinhamento com especificações HTTP enterprise adotadas por APIs como GitHub e Stripe.
 
 ### 1.3. Adapter S3 / MinIO para `AttachmentStorage`
+- **Status**: ✅ Implementado (spec: `docs/specs/2026-10-01-s3-attachment-storage-design.md`). AWS SDK v2, `ATTACHMENTS_STORAGE=s3`, compensação no rollback e S3 local opcional no compose (`--profile s3`). Testado contra o Adobe S3Mock, porque a imagem do MinIO deixou de ser publicada no Docker Hub.
 - **Situação atual**: A interface `AttachmentStorage` possui apenas a implementação `DatabaseAttachmentStorage` (`bytea` no PostgreSQL).
 - **Proposta**:
   - Criar `S3AttachmentStorage` usando AWS SDK v2 ou MinIO.

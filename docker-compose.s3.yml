@@ -1,0 +1,17 @@
+# Runs the API with attachments in an S3-compatible bucket (Adobe S3Mock) instead of PostgreSQL:
+#   docker compose -f docker-compose.yml -f docker-compose.s3.yml --profile s3 up --build
+# S3Mock accepts any credentials; the backend creates the bucket on startup.
+services:
+  backend:
+    environment:
+      ATTACHMENTS_STORAGE: s3
+      S3_ENDPOINT: http://s3:9090
+      S3_PATH_STYLE: "true"
+      S3_CREATE_BUCKET: "true"
+      S3_ACCESS_KEY: local
+      S3_SECRET_KEY: local
+    depends_on:
+      s3:
+        condition: service_started
+    # S3Mock has no healthcheck tool: if the API starts first and cannot reach it, try again.
+    restart: on-failure:3

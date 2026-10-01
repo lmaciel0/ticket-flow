@@ -43,7 +43,7 @@ Contas de demonstração (senha `demo1234`):
 4. **Concorrência otimista no padrão HTTP:** a API responde com `ETag: "3"` (a versão do chamado) e toda alteração exige `If-Match: "3"`. Sem o cabeçalho, a resposta é **428**; com valor malformado, **400**; se alguém mudou o chamado antes, **412**, e a tela recarrega o chamado. Uma corrida de milissegundos entre a checagem e a gravação ainda é pega pelo `@Version` do JPA e responde **409**.
 5. **Token JWT no `localStorage`:** é simples, mas fica exposto a ataques XSS (o React escapa todo texto de usuário, o que reduz o risco). A evolução é um refresh token em cookie `httpOnly`.
 6. **Token de usuário rebaixado ou desativado vale até expirar (8h).** A evolução é consultar o usuário a cada requisição ou manter uma lista de tokens revogados.
-7. **Anexos no PostgreSQL (`bytea`):** evita custo e infraestrutura extra, com limite de 5 MB e validação da assinatura do arquivo (não só da extensão). A interface `AttachmentStorage` permite migrar para S3.
+7. **Anexos no PostgreSQL (`bytea`) por padrão, S3 opcional:** o banco evita custo e infraestrutura extra, com limite de 5 MB e validação da assinatura do arquivo (não só da extensão). A interface `AttachmentStorage` é uma porta com dois adaptadores: `DatabaseAttachmentStorage` (padrão) e `S3AttachmentStorage` (AWS S3, MinIO, R2...), escolhidos por `ATTACHMENTS_STORAGE=database|s3`. O S3 não participa da transação do banco, então um upload seguido de rollback apaga o objeto (ação compensatória). Trocar de modo não migra os anexos antigos.
 8. **O solicitante escolhe a prioridade inicial:** pode exagerar a urgência. O atendente responsável ou o gestor corrige, e a correção fica no histórico.
 9. **Horário comercial no SLA:** o `BusinessCalendar` (seg-sex, 08h-18h, feriados configuráveis) está ligado na demo pública e desligado no perfil padrão. Para alternar, defina `SLA_BUSINESS_HOURS=true` ou `false`. Chamados já abertos mantêm o prazo gravado; os da demo são recriados a cada 24 h já na régua escolhida.
 10. **Histórico gravado explicitamente em vez de Envers:** dá controle sobre quais eventos importam e deixa o código legível.
@@ -61,6 +61,12 @@ docker compose up --build
 ```
 
 Sobe o banco, a API com os dados de demonstração e o frontend. Abra `http://localhost:5173`. Para desligar, use `docker compose down`; o `-v` apagaria também o banco.
+
+Para guardar os anexos num bucket compatível com S3 ([Adobe S3Mock](https://github.com/adobe/S3Mock)) em vez do PostgreSQL:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.s3.yml --profile s3 up --build
+```
 
 ## Rodando o backend localmente
 
