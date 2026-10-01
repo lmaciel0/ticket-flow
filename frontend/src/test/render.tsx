@@ -58,11 +58,20 @@ export function mockApi(replies: Record<string, Reply>) {
   return fetchMock
 }
 
-/** The JSON body of the (first) request sent to "METHOD /path". */
-export function sentBody(fetchMock: ReturnType<typeof mockApi>, key: string): unknown {
+function sentRequest(fetchMock: ReturnType<typeof mockApi>, key: string): RequestInit | undefined {
   const call = fetchMock.mock.calls.find(([input, init]) => requestKey(input, init) === key)
   if (!call) {
     throw new Error(`No request to ${key}`)
   }
-  return JSON.parse(call[1]?.body as string)
+  return call[1]
+}
+
+/** The JSON body of the (first) request sent to "METHOD /path". */
+export function sentBody(fetchMock: ReturnType<typeof mockApi>, key: string): unknown {
+  return JSON.parse(sentRequest(fetchMock, key)?.body as string)
+}
+
+/** The headers of the (first) request sent to "METHOD /path". */
+export function sentHeaders(fetchMock: ReturnType<typeof mockApi>, key: string): Headers {
+  return new Headers(sentRequest(fetchMock, key)?.headers)
 }

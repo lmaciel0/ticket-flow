@@ -69,9 +69,14 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, shown, fieldErrors, traceId)
 }
 
-async function send(method: string, path: string, body?: unknown): Promise<Response> {
+async function send(
+  method: string,
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<Response> {
   const token = PUBLIC_PATHS.includes(path) ? null : tokenStorage.get()
-  const headers = new Headers()
+  const headers = new Headers(extraHeaders)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
@@ -102,8 +107,8 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   return response
 }
 
-async function json<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await send(method, path, body)
+async function json<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  const response = await send(method, path, body, headers)
   return (await response.json()) as T
 }
 
@@ -118,8 +123,8 @@ export interface DownloadedFile {
 
 export const api = {
   get: <T>(path: string) => json<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => json<T>('POST', path, body),
-  patch: <T>(path: string, body: unknown) => json<T>('PATCH', path, body),
+  post: <T>(path: string, body?: unknown, headers?: Record<string, string>) => json<T>('POST', path, body, headers),
+  patch: <T>(path: string, body: unknown, headers?: Record<string, string>) => json<T>('PATCH', path, body, headers),
   /** Binary responses (attachment downloads). */
   blob: async (path: string): Promise<Blob> => (await send('GET', path)).blob(),
   /** Generated files (ticket export): the bytes plus the file name and the truncation flag. */

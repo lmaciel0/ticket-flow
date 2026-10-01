@@ -17,6 +17,7 @@ Documento permanente com o catálogo de melhorias arquiteturais, segurança, ban
   - Benefício: Permite plugar novos comportamentos futuros (ex: envio de e-mails, webhooks ou integrações) sem alterar a classe `TicketService` (Princípio Aberto/Fechado - OCP).
 
 ### 1.2. Padrão HTTP RFC 7232 (`ETag` e `If-Match`)
+- **Status**: ✅ Implementado (spec: `docs/specs/2026-10-01-etag-if-match-design.md`). Segue a RFC 9110, que substituiu a 7232: `ETag` nas respostas, `If-Match` obrigatório nas três mutações (428 se ausente, 400 se malformado, 412 se desatualizado).
 - **Situação atual**: O frontend envia o campo `version` dentro do corpo JSON das requisições para controle de concorrência otimista.
 - **Proposta**:
   - No `GET /api/tickets/{id}`, responder com o header HTTP `ETag: "2"`.
