@@ -75,12 +75,14 @@ class DomainEventsApiTest extends IntegrationTest {
         return mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"assigneeId\": %d, \"version\": %d}".formatted(assigneeId, version)));
+                .header("If-Match", etag(version))
+                .content("{\"assigneeId\": %d}".formatted(assigneeId)));
     }
 
-    ResultActions patchTicket(User actor, long ticketId, String json) throws Exception {
+    ResultActions patchTicket(User actor, long ticketId, long version, String json) throws Exception {
         return mvc.perform(patch("/api/tickets/{id}", ticketId)
                 .header("Authorization", bearer(actor))
+                .header("If-Match", etag(version))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
     }
@@ -96,7 +98,8 @@ class DomainEventsApiTest extends IntegrationTest {
         return mvc.perform(post("/api/tickets/{id}/status", ticketId)
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"%s\", \"version\": %d}".formatted(status, version)));
+                .header("If-Match", etag(version))
+                .content("{\"status\": \"%s\"}".formatted(status)));
     }
 
     List<String> historyEventTypes(long ticketId) {
@@ -153,7 +156,8 @@ class DomainEventsApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/status", id)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\": \"RESOLVED\", \"version\": 1}"))
+                        .header("If-Match", etag(1))
+                        .content("{\"status\": \"RESOLVED\"}"))
                 .andExpect(status().isOk());
 
         assertThat(recorder.received).singleElement().isInstanceOfSatisfying(TicketStatusChanged.class, event -> {
@@ -168,7 +172,7 @@ class DomainEventsApiTest extends IntegrationTest {
         long id = createTicket(ana, "Impressora", "LOW");
         recorder.received.clear();
 
-        patchTicket(carla, id, "{\"priority\": \"HIGH\", \"categoryId\": %d, \"version\": 0}"
+        patchTicket(carla, id, 0, "{\"priority\": \"HIGH\", \"categoryId\": %d}"
                 .formatted(categoryId("Software"))).andExpect(status().isOk());
 
         assertThat(recorder.received).hasSize(2);
@@ -187,7 +191,7 @@ class DomainEventsApiTest extends IntegrationTest {
         long id = createTicket(ana, "Impressora", "LOW");
         recorder.received.clear();
 
-        patchTicket(carla, id, "{\"priority\": \"LOW\", \"categoryId\": %d, \"version\": 0}"
+        patchTicket(carla, id, 0, "{\"priority\": \"LOW\", \"categoryId\": %d}"
                 .formatted(categoryId("Hardware"))).andExpect(status().isOk());
 
         assertThat(recorder.received).isEmpty();

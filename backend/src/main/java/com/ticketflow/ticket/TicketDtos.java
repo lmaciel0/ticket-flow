@@ -21,21 +21,14 @@ public final class TicketDtos {
             @NotNull(message = "Informe a categoria.") Long categoryId) {
     }
 
-    /** Fields left null are not changed. */
-    public record UpdateTicketRequest(
-            Priority priority,
-            Long categoryId,
-            @NotNull(message = "Informe a versão.") Long version) {
+    /** Fields left null are not changed. The expected version travels in the If-Match header. */
+    public record UpdateTicketRequest(Priority priority, Long categoryId) {
     }
 
-    public record AssignRequest(
-            @NotNull(message = "Informe o responsável.") Long assigneeId,
-            @NotNull(message = "Informe a versão.") Long version) {
+    public record AssignRequest(@NotNull(message = "Informe o responsável.") Long assigneeId) {
     }
 
-    public record ChangeStatusRequest(
-            @NotNull(message = "Informe o status.") TicketStatus status,
-            @NotNull(message = "Informe a versão.") Long version) {
+    public record ChangeStatusRequest(@NotNull(message = "Informe o status.") TicketStatus status) {
     }
 
     public record TicketResponse(

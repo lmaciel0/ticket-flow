@@ -79,7 +79,8 @@ class UserApiTest extends IntegrationTest {
         mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                         .header("Authorization", bearer(bruno))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"assigneeId\": %d, \"version\": 0}".formatted(bruno.getId())))
+                        .header("If-Match", etag(0))
+                        .content("{\"assigneeId\": %d}".formatted(bruno.getId())))
                 .andExpect(status().isOk());
 
         update(carla, bruno, "{\"role\": \"REQUESTER\"}").andExpect(status().isConflict());

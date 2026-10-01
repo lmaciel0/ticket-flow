@@ -1,5 +1,7 @@
 package com.ticketflow.common;
 
+import static org.hamcrest.Matchers.containsStringIgnoringCase;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +38,22 @@ class CorsApiTest extends IntegrationTest {
                         .header("Access-Control-Request-Headers", "content-type"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
+    }
+
+    @Test
+    void letsTheFrontendSendIfMatch() throws Exception {
+        mvc.perform(options("/api/tickets/1/status")
+                        .header("Origin", FRONTEND)
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "authorization, content-type, if-match"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Headers", containsStringIgnoringCase("if-match")));
+    }
+
+    @Test
+    void letsTheFrontendReadTheETag() throws Exception {
+        mvc.perform(get("/api/categories").header("Origin", FRONTEND))
+                .andExpect(header().string("Access-Control-Expose-Headers", containsStringIgnoringCase("ETag")));
     }
 
     @Test

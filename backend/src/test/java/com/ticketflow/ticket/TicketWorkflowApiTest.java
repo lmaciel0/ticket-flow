@@ -35,14 +35,16 @@ class TicketWorkflowApiTest extends IntegrationTest {
         return mvc.perform(post("/api/tickets/{id}/assign", ticketId)
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"assigneeId\": %d, \"version\": %d}".formatted(assigneeId, version)));
+                .header("If-Match", etag(version))
+                .content("{\"assigneeId\": %d}".formatted(assigneeId)));
     }
 
     ResultActions changeStatus(User actor, long ticketId, String status, long version) throws Exception {
         return mvc.perform(post("/api/tickets/{id}/status", ticketId)
                 .header("Authorization", bearer(actor))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"%s\", \"version\": %d}".formatted(status, version)));
+                .header("If-Match", etag(version))
+                .content("{\"status\": \"%s\"}".formatted(status)));
     }
 
     long versionAfter(ResultActions result) throws Exception {
@@ -162,12 +164,12 @@ class TicketWorkflowApiTest extends IntegrationTest {
     }
 
     @Test
-    void staleVersionIsConflict() throws Exception {
+    void staleVersionIsPreconditionFailed() throws Exception {
         long id = createTicket(ana, "Impressora", "LOW");
         versionAfter(assign(bruno, id, bruno.getId(), 0));
 
         changeStatus(bruno, id, "RESOLVED", 0)
-                .andExpect(status().isConflict())
+                .andExpect(status().isPreconditionFailed())
                 .andExpect(jsonPath("$.detail").value(
                         "O chamado foi alterado por outra pessoa. Recarregue e tente novamente."));
     }
