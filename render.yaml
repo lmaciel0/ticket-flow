@@ -40,6 +40,11 @@ services:
       - key: VITE_API_URL
         sync: false
     routes:
+      # Probe for roadmap 3.2: the site forwards /api/* to the API, so the refresh cookie can be first-party.
+      # The frontend still calls the API directly (VITE_API_URL) until 3.2 switches it over.
+      - type: rewrite
+        source: /api/*
+        destination: https://ticket-flow-api-a15n.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
