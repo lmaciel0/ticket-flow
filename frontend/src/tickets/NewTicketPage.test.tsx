@@ -46,7 +46,9 @@ describe('NewTicketPage', () => {
     await user.click(screen.getByRole('button', { name: 'Abrir chamado' }))
 
     expect(await screen.findByText('Escolha a categoria.')).toBeInTheDocument()
-    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual(['http://localhost:8080/api/categories'])
+    // the session restore on mount is not what this test is about
+    const requested = fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => !url.endsWith('/auth/refresh'))
+    expect(requested).toEqual(['http://localhost:8080/api/categories'])
   })
 
   it('shows the messages the API sends for each field', async () => {

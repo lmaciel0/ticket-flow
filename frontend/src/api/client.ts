@@ -1,7 +1,15 @@
+import type { AuthResponse } from './types'
+
 // Typed by hand in the Render dashboard: drop pasted spaces and the trailing slash, if any
 // ("https://api.example.com/" + "/api" would be a double slash).
 const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').trim().replace(/\/+$/, '')
-export const TOKEN_KEY = 'ticketflow.token'
+
+// Older versions kept the token in localStorage (readable by any script on the page): drop it.
+try {
+  localStorage.removeItem('ticketflow.token')
+} catch {
+  // storage blocked (private mode): nothing was stored either
+}
 
 const FALLBACK_MESSAGES: Record<number, string> = {
   0: 'Não foi possível falar com o servidor. Tente de novo em instantes.',
@@ -27,22 +35,101 @@ export class ApiError extends Error {
   }
 }
 
-/** The JWT lives in localStorage (trade-off documented in the README: simple, but readable by XSS). */
+/**
+ * The access token lives only in memory: it lasts 15 minutes and a page script cannot carry a long session
+ * away. The session itself is the HttpOnly refresh cookie, which no script can read.
+ */
+let accessToken: string | null = null
 export const tokenStorage = {
-  get: (): string | null => localStorage.getItem(TOKEN_KEY),
-  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  get: (): string | null => accessToken,
+  set: (token: string) => {
+    accessToken = token
+  },
+  clear: () => {
+    accessToken = null
+  },
 }
+
+/**
+ * Routes that read or write the refresh cookie. They are called on the site's own origin (Render forwards
+ * /api to the API) so the cookie belongs to the site; everything else goes straight to the API.
+ */
+const COOKIE_PATHS = new Set(['/auth/session', '/auth/refresh', '/auth/logout'])
 
 // Login and sign-up never carry a token: Spring rejects an invalid Bearer header even on public
 // routes, so a token left over from yesterday (demo reset) would make the login itself fail.
-const PUBLIC_PATHS = ['/auth/login', '/auth/register']
+const PUBLIC_PATHS = new Set(['/auth/login', '/auth/register', ...COOKIE_PATHS])
+
+function urlFor(path: string): string {
+  return COOKIE_PATHS.has(path) ? `/api${path}` : `${API_URL}/api${path}`
+}
 
 let onUnauthorized: () => void = () => {}
 
 /** The auth layer registers here what to do when the session dies (clear state, go to login). */
 export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler
+}
+
+let refreshing: Promise<AuthResponse | null> | null = null
+
+/**
+ * Pauses between attempts while the API is unreachable (about 90 s in total): the free Render API takes about
+ * 65 s to wake up and, meanwhile, the site proxy answers 502/503/504 or the fetch fails. Exported so tests can
+ * advance fake timers by exactly this much.
+ */
+export const REFRESH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 15000, 15000, 15000, 15000]
+
+/**
+ * Gets a new access token from the refresh cookie. Requests that fail together share one renewal, and tabs
+ * take turns (Web Locks): two renewals with the same cookie would look like a stolen token to the API.
+ * Null means there is no session: no cookie, expired, or the API stayed unreachable after the retries.
+ */
+export function refreshSession(): Promise<AuthResponse | null> {
+  refreshing ??= withRefreshLock(renew).finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+
+function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  return 'locks' in navigator ? navigator.locks.request('ticketflow-refresh', task) : task()
+}
+
+/** Only a network failure or a 5xx may be a server that is waking up; any other refusal (401, 403...) is "no session". */
+async function renew(): Promise<AuthResponse | null> {
+  for (let attempt = 0; ; attempt++) {
+    let response: Response | null = null
+    try {
+      response = await fetch(urlFor('/auth/refresh'), { method: 'POST' })
+    } catch {
+      // network error: transient
+    }
+    if (response?.ok) {
+      return readSession(response)
+    }
+    if (response && response.status < 500) {
+      tokenStorage.clear()
+      return null
+    }
+    if (attempt >= REFRESH_RETRY_DELAYS_MS.length) {
+      return null
+    }
+    await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAYS_MS[attempt]))
+  }
+}
+
+async function readSession(response: Response): Promise<AuthResponse | null> {
+  let session: AuthResponse
+  try {
+    session = (await response.json()) as AuthResponse
+  } catch {
+    // 2xx but not JSON (e.g. a misrouted proxy answering with a page): there is no session to restore
+    tokenStorage.clear()
+    return null
+  }
+  tokenStorage.set(session.token)
+  return session
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
@@ -75,8 +162,9 @@ async function send(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
+  retried = false,
 ): Promise<Response> {
-  const token = PUBLIC_PATHS.includes(path) ? null : tokenStorage.get()
+  const token = PUBLIC_PATHS.has(path) ? null : tokenStorage.get()
   const headers = new Headers(extraHeaders)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
@@ -91,14 +179,18 @@ async function send(
 
   let response: Response
   try {
-    response = await fetch(`${API_URL}/api${path}`, { method, headers, body: payload })
+    response = await fetch(urlFor(path), { method, headers, body: payload })
   } catch {
     throw new ApiError(0, FALLBACK_MESSAGES[0])
   }
 
-  // 401 with a token = the session is over (expired, or the demo reset deleted the user).
+  // 401 with a token: the 15-minute access token expired (or the demo reset deleted the user). Renew it once
+  // from the refresh cookie and repeat the request; if that fails too, the session is over.
   // 401 without a token is just a wrong password on the login form.
   if (response.status === 401 && token) {
+    if (!retried && (await refreshSession()) !== null) {
+      return send(method, path, body, extraHeaders, true)
+    }
     tokenStorage.clear()
     onUnauthorized()
   }
@@ -110,6 +202,9 @@ async function send(
 
 async function json<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   const response = await send(method, path, body, headers)
+  if (response.status === 204) {
+    return undefined as T
+  }
   return (await response.json()) as T
 }
 

@@ -22,7 +22,8 @@ describe('ExportMenu', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Excel (.xlsx)' }))
 
     await waitFor(() => expect(click).toHaveBeenCalled())
-    const requested = new URL(String(fetchMock.mock.calls[0][0]))
+    const exportCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/tickets/export'))
+    const requested = new URL(String(exportCall?.[0]))
     expect(requested.pathname).toBe('/api/tickets/export')
     expect(requested.searchParams.get('format')).toBe('XLSX')
     expect(requested.searchParams.get('priority')).toBe('HIGH')

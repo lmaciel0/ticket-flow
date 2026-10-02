@@ -54,7 +54,16 @@ app:
   jwt:
     # Local development only. Production must set JWT_SECRET (at least 32 bytes).
     secret: ${JWT_SECRET:local-dev-secret-change-me-0123456789abcdef}
-    ttl: 8h
+    ttl: 15m
+  auth:
+    # The refresh token keeps the session for a week; each use replaces it (rotation) without extending it.
+    refresh-ttl: 7d
+    # One-time code that carries a login from the API's domain to the site's, where the cookie lives.
+    handoff-ttl: 60s
+    # Two tabs refreshing with the same cookie at the same time must not look like a stolen token.
+    reuse-grace: 30s
+    refresh-cookie:
+      secure: true
   rate-limit:
     enabled: true
     login:

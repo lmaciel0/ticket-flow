@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, setUnauthorizedHandler, tokenStorage } from './client'
+import { api, ApiError, REFRESH_RETRY_DELAYS_MS, refreshSession, setUnauthorizedHandler, tokenStorage } from './client'
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -199,5 +199,169 @@ describe('api client', () => {
     expect(file.filename).toBe('chamados-2026-10-01.csv')
     expect(file.truncated).toBe(true)
     expect(await file.blob.text()).toBe('a;b')
+  })
+
+  it('calls the cookie routes on the site itself, never with the access token', async () => {
+    tokenStorage.set('abc.def.ghi')
+    const fetchMock = mockFetch(new Response(null, { status: 204 }))
+
+    const result = await api.post('/auth/logout')
+
+    expect(result).toBeUndefined()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/logout')
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBeNull()
+  })
+
+  it('renews an expired access token once and repeats the request', async () => {
+    tokenStorage.set('old')
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(401, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse(200, { token: 'new', user: { id: 1 } }))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 7 }]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.get('/tickets')
+
+    expect(result).toEqual([{ id: 7 }])
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/refresh')
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get('Authorization')).toBe('Bearer new')
+    expect(tokenStorage.get()).toBe('new')
+  })
+
+  it('renews only once when many requests fail together', async () => {
+    tokenStorage.set('old')
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input) === '/api/auth/refresh') {
+        return jsonResponse(200, { token: 'new', user: { id: 1 } })
+      }
+      const auth = new Headers(init?.headers).get('Authorization')
+      return auth === 'Bearer new' ? jsonResponse(200, {}) : jsonResponse(401, { status: 401 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await Promise.all([api.get('/tickets'), api.get('/categories'), api.get('/users')])
+
+    expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/auth/refresh')).toHaveLength(1)
+  })
+
+  it('ends the session when the renewal is refused', async () => {
+    tokenStorage.set('old')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => jsonResponse(401, { status: 401 })))
+
+    await expect(api.get('/tickets')).rejects.toMatchObject({ status: 401 })
+
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(tokenStorage.get()).toBeNull()
+  })
+
+  describe('while the API wakes up (the site proxy answers 5xx or the fetch fails)', () => {
+    const session = { token: 'new', user: { id: 1 } }
+
+    afterEach(() => vi.useRealTimers())
+
+    it('retries after a 503 and restores the session', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response('<html>starting</html>', { status: 503 }))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await pending).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(tokenStorage.get()).toBe('new')
+    })
+
+    it('retries after a network error and restores the session', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await pending).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps one renewal in flight while it waits: every caller shares it', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response('', { status: 502 }))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const first = refreshSession()
+      const second = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await first).toEqual(session)
+      expect(await second).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not retry a 401: that is no session', async () => {
+      const fetchMock = mockFetch(jsonResponse(401, { status: 401 }))
+      tokenStorage.set('old')
+
+      expect(await refreshSession()).toBeNull()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(tokenStorage.get()).toBeNull()
+    })
+
+    it('does not retry a 403 either', async () => {
+      const fetchMock = mockFetch(jsonResponse(403, { status: 403 }))
+
+      expect(await refreshSession()).toBeNull()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    it('gives up with no session once the retry budget is spent', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0))
+
+      expect(await pending).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(REFRESH_RETRY_DELAYS_MS.length + 1)
+    })
+
+    it('waits about a minute and a half before giving up', () => {
+      const total = REFRESH_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0)
+
+      expect(total).toBeGreaterThanOrEqual(85_000)
+      expect(total).toBeLessThanOrEqual(95_000)
+    })
+  })
+
+  it('treats a successful refresh answer that is not JSON as no session', async () => {
+    tokenStorage.set('old-token')
+    mockFetch(new Response('<html>bad gateway page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+
+    expect(await refreshSession()).toBeNull()
+    expect(tokenStorage.get()).toBeNull()
+  })
+
+  it('forgets the token an older version kept in localStorage', async () => {
+    localStorage.setItem('ticketflow.token', 'from-last-week')
+    vi.resetModules()
+
+    await import('./client')
+
+    expect(localStorage.getItem('ticketflow.token')).toBeNull()
   })
 })

@@ -18,6 +18,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Same as Render's /api rewrite: the refresh cookie routes are called on the site's own origin.
+    proxy: { '/api': 'http://localhost:8080' },
   },
   test: {
     environment: 'jsdom',

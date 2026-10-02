@@ -24,6 +24,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-0123456789}
       CORS_ALLOWED_ORIGINS: http://localhost:5173
       SPRING_PROFILES_ACTIVE: demo
+      # Plain http on localhost: Safari drops Secure cookies there (Chrome and Firefox accept them).
+      APP_AUTH_REFRESHCOOKIE_SECURE: "false"
     ports:
       - "8080:8080"
     depends_on:
