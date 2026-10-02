@@ -263,6 +263,14 @@ describe('api client', () => {
     expect(await refreshSession()).toBeNull()
   })
 
+  it('treats a successful refresh answer that is not JSON as no session', async () => {
+    tokenStorage.set('old-token')
+    mockFetch(new Response('<html>bad gateway page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+
+    expect(await refreshSession()).toBeNull()
+    expect(tokenStorage.get()).toBeNull()
+  })
+
   it('forgets the token an older version kept in localStorage', async () => {
     localStorage.setItem('ticketflow.token', 'from-last-week')
     vi.resetModules()

@@ -100,7 +100,14 @@ async function renew(): Promise<AuthResponse | null> {
     tokenStorage.clear()
     return null
   }
-  const session = (await response.json()) as AuthResponse
+  let session: AuthResponse
+  try {
+    session = (await response.json()) as AuthResponse
+  } catch {
+    // 2xx but not JSON (e.g. a misrouted proxy answering with a page): there is no session to restore
+    tokenStorage.clear()
+    return null
+  }
   tokenStorage.set(session.token)
   return session
 }

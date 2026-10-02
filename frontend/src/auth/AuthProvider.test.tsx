@@ -80,4 +80,52 @@ describe('AuthProvider', () => {
 
     expect(await screen.findByText('Tela de login')).toBeInTheDocument()
   })
+
+  it('shows the login page when the refresh answer is garbage instead of hanging', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => new Response('<html>not the API</html>', { status: 200 })),
+    )
+
+    renderRoutes(routes, '/tickets')
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+  })
+
+  it('shows the login page when the refresh itself blows up instead of hanging', async () => {
+    mockApi({})
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request: () => Promise.reject(new Error('locks unavailable')) },
+    })
+
+    try {
+      renderRoutes(routes, '/tickets')
+
+      expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+    } finally {
+      Reflect.deleteProperty(navigator, 'locks')
+    }
+  })
+
+  describe('under StrictMode (effects run, clean up and run again)', () => {
+    it('still ends the session on the server when logging out', async () => {
+      const fetchMock = mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
+      const { user } = renderRoutes(routes, '/tickets', { strict: true })
+      await user.click(await screen.findByRole('button', { name: 'Sair' }))
+
+      expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+      expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/auth/logout')).toBe(true)
+    })
+
+    it('still follows a logout in another tab', async () => {
+      mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
+      renderRoutes(routes, '/tickets', { strict: true })
+      expect(await screen.findByText('Logado como Ana')).toBeInTheDocument()
+
+      anotherTabSays('logout')
+
+      expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+    })
+  })
 })

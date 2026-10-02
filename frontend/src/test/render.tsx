@@ -2,7 +2,7 @@ import { MantineProvider } from '@mantine/core'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactNode } from 'react'
+import { type ReactNode, StrictMode } from 'react'
 import { createMemoryRouter, type RouteObject, RouterProvider } from 'react-router'
 import { vi } from 'vitest'
 import { createQueryClient } from '../api/queryClient'
@@ -14,19 +14,20 @@ export function renderUi(ui: ReactNode) {
 }
 
 /** Renders routes with the same providers as main.tsx, starting at `path`. */
-export function renderRoutes(routes: RouteObject[], path: string) {
+export function renderRoutes(routes: RouteObject[], path: string, options: { strict?: boolean } = {}) {
   const queryClient = createQueryClient()
   const router = createMemoryRouter(routes, { initialEntries: [path] })
   const user = userEvent.setup()
-  render(
+  const app = (
     <MantineProvider env="test">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RouterProvider router={router} />
         </AuthProvider>
       </QueryClientProvider>
-    </MantineProvider>,
+    </MantineProvider>
   )
+  render(options.strict ? <StrictMode>{app}</StrictMode> : app)
   return { user, router, queryClient }
 }
 

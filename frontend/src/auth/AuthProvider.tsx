@@ -1,6 +1,6 @@
 import { notifications } from '@mantine/notifications'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, refreshSession, setUnauthorizedHandler, tokenStorage } from '../api/client'
 import type { AuthResponse, User } from '../api/types'
 import { AuthContext, type AuthContextValue } from './authContext'
@@ -12,11 +12,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState(tokenStorage.get)
   // A freshly opened page has no access token in memory: the refresh cookie, if any, brings the session back.
   const [restoring, setRestoring] = useState(() => tokenStorage.get() === null)
-  // Tabs no longer share the token, so they tell each other about logins and logouts.
-  const [channel] = useState(() =>
-    typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('ticketflow-auth'),
-  )
-  useEffect(() => () => channel?.close(), [channel])
+  // Tabs no longer share the token, so they tell each other about logins and logouts. The channel is opened and
+  // closed by the same effect (below), so StrictMode and Fast Refresh never leave this provider with a closed one.
+  const channelRef = useRef<BroadcastChannel | null>(null)
 
   // The token is part of the key: another token is another user.
   const me = useQuery({
@@ -37,14 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const restore = useCallback(
     () =>
-      refreshSession().then((session) => {
-        if (session) {
-          adopt(session)
-        } else {
-          setToken(null)
-        }
-        setRestoring(false)
-      }),
+      // A refresh that breaks is no session, never an endless loading screen.
+      refreshSession()
+        .catch(() => null)
+        .then((session) => {
+          if (session) {
+            adopt(session)
+          } else {
+            setToken(null)
+          }
+          setRestoring(false)
+        }),
     [adopt],
   )
 
@@ -66,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.sessionCode) {
         api
           .post('/auth/session', { code: response.sessionCode })
-          .then(() => channel?.postMessage({ type: 'login' } satisfies AuthMessage))
+          .then(() => channelRef.current?.postMessage({ type: 'login' } satisfies AuthMessage))
           .catch(() =>
             notifications.show({
               color: 'yellow',
@@ -75,16 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           )
       }
     },
-    [adopt, channel],
+    [adopt],
   )
 
   const logout = useCallback(() => {
     dropSession()
-    channel?.postMessage({ type: 'logout' } satisfies AuthMessage)
+    channelRef.current?.postMessage({ type: 'logout' } satisfies AuthMessage)
     api.post('/auth/logout').catch(() => {
       // best effort: the cookie is HttpOnly, only the server can end it; without the server it expires anyway
     })
-  }, [dropSession, channel])
+  }, [dropSession])
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -96,9 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Another tab logged out: follow it. Another tab logged in (maybe as someone else): the shared cookie now
   // holds that session, so renew from it. This tab must never show one user while its requests carry another's.
   useEffect(() => {
-    if (!channel) {
+    if (typeof BroadcastChannel === 'undefined') {
       return
     }
+    const channel = new BroadcastChannel('ticketflow-auth')
+    channelRef.current = channel
     function onMessage(event: MessageEvent<AuthMessage>) {
       queryClient.clear()
       tokenStorage.clear()
@@ -110,8 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     channel.addEventListener('message', onMessage)
-    return () => channel.removeEventListener('message', onMessage)
-  }, [channel, queryClient, restore])
+    return () => {
+      channel.removeEventListener('message', onMessage)
+      channel.close()
+      channelRef.current = null
+    }
+  }, [queryClient, restore])
 
   const value = useMemo<AuthContextValue>(
     () => ({
