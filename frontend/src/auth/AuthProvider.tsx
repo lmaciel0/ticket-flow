@@ -15,6 +15,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Tabs no longer share the token, so they tell each other about logins and logouts. The channel is opened and
   // closed by the same effect (below), so StrictMode and Fast Refresh never leave this provider with a closed one.
   const channelRef = useRef<BroadcastChannel | null>(null)
+  // The logout request still in flight: its answer clears the cookie, so a new login must not save its own before it.
+  const pendingLogoutRef = useRef<Promise<unknown> | null>(null)
 
   // The token is part of the key: another token is another user.
   const me = useQuery({
@@ -65,8 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (response: AuthResponse) => {
       adopt(response)
       if (response.sessionCode) {
-        api
-          .post('/auth/session', { code: response.sessionCode })
+        const code = response.sessionCode
+        // Errors of the logout do not matter here (it is best effort); only its order does.
+        ;(pendingLogoutRef.current ?? Promise.resolve())
+          .catch(() => {})
+          .then(() => api.post('/auth/session', { code }))
           .then(() => channelRef.current?.postMessage({ type: 'login' } satisfies AuthMessage))
           .catch(() =>
             notifications.show({
@@ -82,8 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     dropSession()
     channelRef.current?.postMessage({ type: 'logout' } satisfies AuthMessage)
-    api.post('/auth/logout').catch(() => {
+    const request = api.post('/auth/logout').catch(() => {
       // best effort: the cookie is HttpOnly, only the server can end it; without the server it expires anyway
+    })
+    pendingLogoutRef.current = request
+    void request.then(() => {
+      if (pendingLogoutRef.current === request) {
+        pendingLogoutRef.current = null
+      }
     })
   }, [dropSession])
 
@@ -105,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     function onMessage(event: MessageEvent<AuthMessage>) {
       queryClient.clear()
       tokenStorage.clear()
-      if (event.data.type === 'logout') {
+        if (event.data.type === 'logout') {
         setToken(null)
       } else {
         setRestoring(true)

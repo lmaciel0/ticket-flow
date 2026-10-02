@@ -46,12 +46,14 @@ describe('LoginPage', () => {
   })
 
   it('warns that the demo data is reset every day', async () => {
+    mockApi({}) // no refresh cookie
     await openLoginPage()
 
     expect(screen.getByText(/reiniciados diariamente/)).toBeInTheDocument()
   })
 
   it('explains the wake-up wait after any idle time, not only on the first access of the day', async () => {
+    mockApi({}) // no refresh cookie
     await openLoginPage()
 
     const hint = screen.getByText(/pode levar cerca de um minuto/)

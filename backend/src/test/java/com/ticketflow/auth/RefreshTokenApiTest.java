@@ -191,6 +191,20 @@ class RefreshTokenApiTest extends IntegrationTest {
     }
 
     @Test
+    void loggingInOverAnotherSessionEndsTheOldOne() throws Exception {
+        Cookie old = loggedInCookie();
+
+        MvcResult second = mvc.perform(post("/api/auth/session").cookie(old).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\": \"%s\"}".formatted(login())))
+                .andReturn();
+
+        assertThat(second.getResponse().getStatus()).isEqualTo(204);
+        Cookie fresh = second.getResponse().getCookie(RefreshCookie.NAME);
+        assertThat(refresh(old).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh(fresh).getResponse().getStatus()).isEqualTo(200);
+    }
+
+    @Test
     void logoutWithoutASessionIsFine() throws Exception {
         mvc.perform(post("/api/auth/logout")).andExpect(status().isNoContent());
     }

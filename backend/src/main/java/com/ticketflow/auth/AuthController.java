@@ -54,7 +54,13 @@ public class AuthController {
 
     /** Called through the site (same origin), so the cookie lands on the site's domain. */
     @PostMapping("/session")
-    public ResponseEntity<Void> session(@Valid @RequestBody SessionRequest request) {
+    public ResponseEntity<Void> session(
+            @CookieValue(name = RefreshCookie.NAME, required = false) String previous,
+            @Valid @RequestBody SessionRequest request) {
+        // A browser that logs in over another session (another user, or an older login) ends that one first.
+        if (previous != null && !previous.isBlank()) {
+            refreshTokens.logout(previous);
+        }
         RefreshTokenService.IssuedRefresh refresh = refreshTokens.redeemHandoff(request.code());
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, refreshCookie.issue(refresh)).build();
     }

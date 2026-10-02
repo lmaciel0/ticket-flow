@@ -1,12 +1,13 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { tokenStorage } from '../api/client'
-import { mockApi, renderRoutes } from '../test/render'
+import type { User } from '../api/types'
+import { jsonResponse, mockApi, renderRoutes } from '../test/render'
 import { useAuth } from './authContext'
 import { RequireAuth } from './guards'
 
-const ana = { id: 1, name: 'Ana', email: 'ana@x.com', role: 'REQUESTER', active: true, demo: true }
-const bruno = { id: 2, name: 'Bruno', email: 'bruno@x.com', role: 'AGENT', active: true, demo: true }
+const ana: User = { id: 1, name: 'Ana', email: 'ana@x.com', role: 'REQUESTER', active: true, demo: true }
+const bruno: User = { id: 2, name: 'Bruno', email: 'bruno@x.com', role: 'AGENT', active: true, demo: true }
 
 function WhoAmI() {
   const { user, logout } = useAuth()
@@ -15,6 +16,13 @@ function WhoAmI() {
       <p>Logado como {user?.name}</p>
       <button onClick={logout}>Sair</button>
     </>
+  )
+}
+
+function SignIn() {
+  const { login } = useAuth()
+  return (
+    <button onClick={() => login({ token: 'token-bruno', user: bruno, sessionCode: 'code-2' })}>Entrar de novo</button>
   )
 }
 
@@ -30,7 +38,10 @@ function anotherTabSays(type: 'login' | 'logout') {
   channel.close()
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('AuthProvider', () => {
   it('restores the session from the refresh cookie when the page opens', async () => {
@@ -106,6 +117,43 @@ describe('AuthProvider', () => {
     } finally {
       Reflect.deleteProperty(navigator, 'locks')
     }
+  })
+
+  it('waits for a logout still in flight before saving a new login in the cookie', async () => {
+    // A late answer to POST /auth/logout (Set-Cookie Max-Age=0) would delete the cookie the new session just set.
+    const calls: string[] = []
+    let answerLogout: () => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        const key = `${init?.method ?? 'GET'} ${String(input)}`
+        calls.push(key)
+        if (key === 'POST /api/auth/refresh') {
+          return jsonResponse(200, { token: 'token-ana', user: ana })
+        }
+        if (key === 'POST /api/auth/logout') {
+          await new Promise<void>((resolve) => {
+            answerLogout = resolve
+          })
+        }
+        return jsonResponse(204, null)
+      }),
+    )
+    const loginRoutes = [
+      { element: <RequireAuth />, children: [{ path: '/tickets', element: <WhoAmI /> }] },
+      { path: '/login', element: <SignIn /> },
+    ]
+    const { user } = renderRoutes(loginRoutes, '/tickets')
+    await user.click(await screen.findByRole('button', { name: 'Sair' }))
+    await user.click(await screen.findByRole('button', { name: 'Entrar de novo' }))
+    await waitFor(() => expect(calls).toContain('POST /api/auth/logout'))
+
+    expect(calls).not.toContain('POST /api/auth/session')
+
+    answerLogout()
+
+    await waitFor(() => expect(calls).toContain('POST /api/auth/session'))
+    expect(calls.indexOf('POST /api/auth/session')).toBeGreaterThan(calls.indexOf('POST /api/auth/logout'))
   })
 
   describe('under StrictMode (effects run, clean up and run again)', () => {
