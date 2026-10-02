@@ -70,11 +70,7 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             return;
         }
         long retryAfter = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(probe.getNanosToWaitForRefill() + 999_999_999L));
-        // TEMPORARY (roadmap 3.2 probe): which proxy headers reach the API, directly and through the site's
-        // /api rewrite. Remove once the probe is read.
-        log.warn("Too many attempts on {} from {} [x-forwarded-for={}, true-client-ip={}, x-real-ip={}, forwarded={}]",
-                path, ip, headerForLog(request, "X-Forwarded-For"), headerForLog(request, "True-Client-IP"),
-                headerForLog(request, "X-Real-IP"), headerForLog(request, "Forwarded"));
+        log.warn("Too many attempts on {} from {}", path, ip);
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfter));
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
@@ -83,16 +79,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         String traceId = MDC.get(TraceIdFilter.MDC_KEY);
         response.getWriter().write(BODY.formatted(waitText(retryAfter),
                 traceId == null ? "" : ",\"traceId\":\"" + traceId + "\""));
-    }
-
-    /** A header value safe for one log line: printable ASCII only, at most 200 characters. */
-    private static String headerForLog(HttpServletRequest request, String name) {
-        String value = request.getHeader(name);
-        if (value == null) {
-            return "-";
-        }
-        String printable = value.replaceAll("[^ -~]", "?");
-        return printable.length() > 200 ? printable.substring(0, 200) + "..." : printable;
     }
 
     /** "12 s" under a minute, "20 min" (rounded up) from a minute on: nobody counts 1200 seconds. */
