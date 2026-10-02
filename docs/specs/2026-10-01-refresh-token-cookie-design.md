@@ -1,7 +1,7 @@
 # Refresh token em cookie HttpOnly e access token curto (roadmap 3.2)
 
 - **Data:** 2026-10-01
-- **Status:** em revisão
+- **Status:** aprovada
 - **Autor:** Roberto Lucas
 - **Origem:** item 3.2 de `docs/roadmap-de-evolucao.md`
 
