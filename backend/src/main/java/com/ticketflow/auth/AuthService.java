@@ -20,12 +20,15 @@ public class AuthService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
+    private final RefreshTokenService refreshTokens;
     private final Clock clock;
 
-    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, TokenService tokenService, Clock clock) {
+    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, TokenService tokenService,
+            RefreshTokenService refreshTokens, Clock clock) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
+        this.refreshTokens = refreshTokens;
         this.clock = clock;
     }
 
@@ -38,10 +41,10 @@ public class AuthService {
         // Open sign-up always creates a REQUESTER; only a manager can promote someone later.
         User user = users.save(new User(request.name().strip(), email,
                 passwordEncoder.encode(request.password()), Role.REQUESTER, clock.instant()));
-        return new AuthResponse(tokenService.issue(user), UserResponse.from(user));
+        return new AuthResponse(tokenService.issue(user), UserResponse.from(user), refreshTokens.createHandoff(user));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         // Same message for "unknown e-mail", "wrong password" and "inactive user":
         // the API must not reveal which e-mails are registered.
@@ -49,7 +52,7 @@ public class AuthService {
                 .filter(User::isActive)
                 .filter(found -> passwordEncoder.matches(request.password(), found.getPasswordHash()))
                 .orElseThrow(() -> ApiException.unauthorized("E-mail ou senha inválidos."));
-        return new AuthResponse(tokenService.issue(user), UserResponse.from(user));
+        return new AuthResponse(tokenService.issue(user), UserResponse.from(user), refreshTokens.createHandoff(user));
     }
 
     @Transactional(readOnly = true)

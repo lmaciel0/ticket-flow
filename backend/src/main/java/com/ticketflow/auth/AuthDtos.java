@@ -23,6 +23,10 @@ public final class AuthDtos {
             @NotBlank(message = "Informe a senha.") String password) {
     }
 
-    public record AuthResponse(String token, UserResponse user) {
+    /** {@code sessionCode} is set on login and sign-up only: exchange it at POST /api/auth/session. */
+    public record AuthResponse(String token, UserResponse user, String sessionCode) {
+    }
+
+    public record SessionRequest(@NotBlank(message = "Informe o código.") String code) {
     }
 }
