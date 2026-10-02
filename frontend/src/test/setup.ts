@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
+import { tokenStorage } from '../api/client'
 
 // findBy*/waitFor give up after 1 s by default: too short when the whole suite runs in parallel.
 configure({ asyncUtilTimeout: 5_000 })
@@ -9,6 +10,7 @@ configure({ asyncUtilTimeout: 5_000 })
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  tokenStorage.clear()
 })
 
 // jsdom does not implement these browser APIs, and Mantine components use them.

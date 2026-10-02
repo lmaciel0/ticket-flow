@@ -41,6 +41,8 @@ export interface UserSummary {
 export interface AuthResponse {
   token: string
   user: User
+  /** Login and sign-up only: exchanged at POST /auth/session for the refresh cookie. */
+  sessionCode?: string | null
 }
 
 export interface Category {

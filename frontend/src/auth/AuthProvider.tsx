@@ -1,7 +1,7 @@
 import { notifications } from '@mantine/notifications'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
-import { api, setUnauthorizedHandler, TOKEN_KEY, tokenStorage } from '../api/client'
+import { api, setUnauthorizedHandler, tokenStorage } from '../api/client'
 import type { AuthResponse, User } from '../api/types'
 import { AuthContext, type AuthContextValue } from './authContext'
 
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // follows it: it must never show one user while its requests carry another user's token.
   useEffect(() => {
     function onStorage(event: StorageEvent) {
-      if (event.key === TOKEN_KEY || event.key === null) {
+      if (event.key === 'ticketflow.token' || event.key === null) {
         queryClient.clear()
         setToken(tokenStorage.get())
       }

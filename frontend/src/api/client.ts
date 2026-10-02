@@ -1,7 +1,15 @@
+import type { AuthResponse } from './types'
+
 // Typed by hand in the Render dashboard: drop pasted spaces and the trailing slash, if any
 // ("https://api.example.com/" + "/api" would be a double slash).
 const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').trim().replace(/\/+$/, '')
-export const TOKEN_KEY = 'ticketflow.token'
+
+// Older versions kept the token in localStorage (readable by any script on the page): drop it.
+try {
+  localStorage.removeItem('ticketflow.token')
+} catch {
+  // storage blocked (private mode): nothing was stored either
+}
 
 const FALLBACK_MESSAGES: Record<number, string> = {
   0: 'Não foi possível falar com o servidor. Tente de novo em instantes.',
@@ -27,22 +35,74 @@ export class ApiError extends Error {
   }
 }
 
-/** The JWT lives in localStorage (trade-off documented in the README: simple, but readable by XSS). */
+/**
+ * The access token lives only in memory: it lasts 15 minutes and a page script cannot carry a long session
+ * away. The session itself is the HttpOnly refresh cookie, which no script can read.
+ */
+let accessToken: string | null = null
 export const tokenStorage = {
-  get: (): string | null => localStorage.getItem(TOKEN_KEY),
-  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  get: (): string | null => accessToken,
+  set: (token: string) => {
+    accessToken = token
+  },
+  clear: () => {
+    accessToken = null
+  },
 }
+
+/**
+ * Routes that read or write the refresh cookie. They are called on the site's own origin (Render forwards
+ * /api to the API) so the cookie belongs to the site; everything else goes straight to the API.
+ */
+const COOKIE_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout']
 
 // Login and sign-up never carry a token: Spring rejects an invalid Bearer header even on public
 // routes, so a token left over from yesterday (demo reset) would make the login itself fail.
-const PUBLIC_PATHS = ['/auth/login', '/auth/register']
+const PUBLIC_PATHS = ['/auth/login', '/auth/register', ...COOKIE_PATHS]
+
+function urlFor(path: string): string {
+  return COOKIE_PATHS.includes(path) ? `/api${path}` : `${API_URL}/api${path}`
+}
 
 let onUnauthorized: () => void = () => {}
 
 /** The auth layer registers here what to do when the session dies (clear state, go to login). */
 export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler
+}
+
+let refreshing: Promise<AuthResponse | null> | null = null
+
+/**
+ * Gets a new access token from the refresh cookie. Requests that fail together share one renewal, and tabs
+ * take turns (Web Locks): two renewals with the same cookie would look like a stolen token to the API.
+ * Null means there is no session (no cookie, expired, or the server could not be reached).
+ */
+export function refreshSession(): Promise<AuthResponse | null> {
+  refreshing ??= withRefreshLock(renew).finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+
+function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  return 'locks' in navigator ? navigator.locks.request('ticketflow-refresh', task) : task()
+}
+
+async function renew(): Promise<AuthResponse | null> {
+  let response: Response
+  try {
+    response = await fetch(urlFor('/auth/refresh'), { method: 'POST' })
+  } catch {
+    return null
+  }
+  if (!response.ok) {
+    tokenStorage.clear()
+    return null
+  }
+  const session = (await response.json()) as AuthResponse
+  tokenStorage.set(session.token)
+  return session
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
@@ -75,6 +135,7 @@ async function send(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
+  retried = false,
 ): Promise<Response> {
   const token = PUBLIC_PATHS.includes(path) ? null : tokenStorage.get()
   const headers = new Headers(extraHeaders)
@@ -91,14 +152,18 @@ async function send(
 
   let response: Response
   try {
-    response = await fetch(`${API_URL}/api${path}`, { method, headers, body: payload })
+    response = await fetch(urlFor(path), { method, headers, body: payload })
   } catch {
     throw new ApiError(0, FALLBACK_MESSAGES[0])
   }
 
-  // 401 with a token = the session is over (expired, or the demo reset deleted the user).
+  // 401 with a token: the 15-minute access token expired (or the demo reset deleted the user). Renew it once
+  // from the refresh cookie and repeat the request; if that fails too, the session is over.
   // 401 without a token is just a wrong password on the login form.
   if (response.status === 401 && token) {
+    if (!retried && (await refreshSession()) !== null) {
+      return send(method, path, body, extraHeaders, true)
+    }
     tokenStorage.clear()
     onUnauthorized()
   }
@@ -110,6 +175,9 @@ async function send(
 
 async function json<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   const response = await send(method, path, body, headers)
+  if (response.status === 204) {
+    return undefined as T
+  }
   return (await response.json()) as T
 }
 

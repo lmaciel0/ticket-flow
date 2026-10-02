@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, setUnauthorizedHandler, tokenStorage } from './client'
+import { api, ApiError, refreshSession, setUnauthorizedHandler, tokenStorage } from './client'
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -199,5 +199,76 @@ describe('api client', () => {
     expect(file.filename).toBe('chamados-2026-10-01.csv')
     expect(file.truncated).toBe(true)
     expect(await file.blob.text()).toBe('a;b')
+  })
+
+  it('calls the cookie routes on the site itself, never with the access token', async () => {
+    tokenStorage.set('abc.def.ghi')
+    const fetchMock = mockFetch(new Response(null, { status: 204 }))
+
+    const result = await api.post('/auth/logout')
+
+    expect(result).toBeUndefined()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/logout')
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBeNull()
+  })
+
+  it('renews an expired access token once and repeats the request', async () => {
+    tokenStorage.set('old')
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(401, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse(200, { token: 'new', user: { id: 1 } }))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 7 }]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await api.get('/tickets')
+
+    expect(result).toEqual([{ id: 7 }])
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/refresh')
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get('Authorization')).toBe('Bearer new')
+    expect(tokenStorage.get()).toBe('new')
+  })
+
+  it('renews only once when many requests fail together', async () => {
+    tokenStorage.set('old')
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input) === '/api/auth/refresh') {
+        return jsonResponse(200, { token: 'new', user: { id: 1 } })
+      }
+      const auth = new Headers(init?.headers).get('Authorization')
+      return auth === 'Bearer new' ? jsonResponse(200, {}) : jsonResponse(401, { status: 401 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await Promise.all([api.get('/tickets'), api.get('/categories'), api.get('/users')])
+
+    expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/auth/refresh')).toHaveLength(1)
+  })
+
+  it('ends the session when the renewal is refused', async () => {
+    tokenStorage.set('old')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => jsonResponse(401, { status: 401 })))
+
+    await expect(api.get('/tickets')).rejects.toMatchObject({ status: 401 })
+
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(tokenStorage.get()).toBeNull()
+  })
+
+  it('treats an unreachable server as no session', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    expect(await refreshSession()).toBeNull()
+  })
+
+  it('forgets the token an older version kept in localStorage', async () => {
+    localStorage.setItem('ticketflow.token', 'from-last-week')
+    vi.resetModules()
+
+    await import('./client')
+
+    expect(localStorage.getItem('ticketflow.token')).toBeNull()
   })
 })
