@@ -1,6 +1,7 @@
+import { notifications } from '@mantine/notifications'
 import { screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { tokenStorage } from '../api/client'
+import { api, tokenStorage } from '../api/client'
 import type { User } from '../api/types'
 import { jsonResponse, mockApi, renderRoutes } from '../test/render'
 import { useAuth } from './authContext'
@@ -154,6 +155,50 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(calls).toContain('POST /api/auth/session'))
     expect(calls.indexOf('POST /api/auth/session')).toBeGreaterThan(calls.indexOf('POST /api/auth/logout'))
+  })
+
+  it('warns, but keeps the user logged in, when the session cannot be saved in the cookie', async () => {
+    const show = vi.spyOn(notifications, 'show')
+    mockApi({ 'POST /auth/session': [500, { status: 500, detail: 'Erro interno.' }] })
+    const loginRoutes = [{ path: '/', element: <SignIn /> }]
+    const { user } = renderRoutes(loginRoutes, '/')
+
+    await user.click(await screen.findByRole('button', { name: 'Entrar de novo' }))
+
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          color: 'yellow',
+          message: 'Não foi possível manter a sessão neste navegador: ao recarregar a página, entre de novo.',
+        }),
+      ),
+    )
+    expect(tokenStorage.get()).toBe('token-bruno')
+  })
+
+  it('shows one "session expired" notice when several requests fail together', async () => {
+    const show = vi.spyOn(notifications, 'show')
+    let refreshes = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        if (String(input) === '/api/auth/refresh') {
+          // the first one restores the session on load; later ones are refused
+          return refreshes++ === 0
+            ? jsonResponse(200, { token: 'token-ana', user: ana })
+            : jsonResponse(401, { status: 401, detail: 'Sessão expirada. Entre novamente.' })
+        }
+        return jsonResponse(401, { status: 401, detail: init?.method ?? 'Autenticação necessária.' })
+      }),
+    )
+    renderRoutes(routes, '/tickets')
+    expect(await screen.findByText('Logado como Ana')).toBeInTheDocument()
+
+    await Promise.allSettled([api.get('/tickets'), api.get('/categories'), api.get('/users')])
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+    expect(show).toHaveBeenCalledTimes(1)
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ message: 'Sua sessão expirou. Entre novamente.' }))
   })
 
   describe('under StrictMode (effects run, clean up and run again)', () => {

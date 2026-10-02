@@ -17,6 +17,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const channelRef = useRef<BroadcastChannel | null>(null)
   // The logout request still in flight: its answer clears the cookie, so a new login must not save its own before it.
   const pendingLogoutRef = useRef<Promise<unknown> | null>(null)
+  // Whether there is a session to end. Several requests can get 401 together; only the first one reports it.
+  const signedInRef = useRef(tokenStorage.get() !== null)
 
   // The token is part of the key: another token is another user.
   const me = useQuery({
@@ -29,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const adopt = useCallback(
     (session: AuthResponse) => {
       tokenStorage.set(session.token)
+      signedInRef.current = true
       queryClient.setQueryData(['me', session.token], session.user)
       setToken(session.token)
     },
@@ -44,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (session) {
             adopt(session)
           } else {
+            signedInRef.current = false
             setToken(null)
           }
           setRestoring(false)
@@ -59,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const dropSession = useCallback(() => {
     tokenStorage.clear()
+    signedInRef.current = false
     setToken(null)
     queryClient.clear() // no data from this user may be shown to the next one
   }, [queryClient])
@@ -100,6 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      if (!signedInRef.current) {
+        return // the session already ended (by the first of several failing requests, or by a logout)
+      }
       dropSession()
       notifications.show({ color: 'yellow', message: 'Sua sessão expirou. Entre novamente.' })
     })
@@ -116,7 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     function onMessage(event: MessageEvent<AuthMessage>) {
       queryClient.clear()
       tokenStorage.clear()
-        if (event.data.type === 'logout') {
+      signedInRef.current = false
+      if (event.data.type === 'logout') {
         setToken(null)
       } else {
         setRestoring(true)
