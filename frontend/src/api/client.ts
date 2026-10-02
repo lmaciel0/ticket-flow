@@ -54,14 +54,14 @@ export const tokenStorage = {
  * Routes that read or write the refresh cookie. They are called on the site's own origin (Render forwards
  * /api to the API) so the cookie belongs to the site; everything else goes straight to the API.
  */
-const COOKIE_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout']
+const COOKIE_PATHS = new Set(['/auth/session', '/auth/refresh', '/auth/logout'])
 
 // Login and sign-up never carry a token: Spring rejects an invalid Bearer header even on public
 // routes, so a token left over from yesterday (demo reset) would make the login itself fail.
-const PUBLIC_PATHS = ['/auth/login', '/auth/register', ...COOKIE_PATHS]
+const PUBLIC_PATHS = new Set(['/auth/login', '/auth/register', ...COOKIE_PATHS])
 
 function urlFor(path: string): string {
-  return COOKIE_PATHS.includes(path) ? `/api${path}` : `${API_URL}/api${path}`
+  return COOKIE_PATHS.has(path) ? `/api${path}` : `${API_URL}/api${path}`
 }
 
 let onUnauthorized: () => void = () => {}
@@ -164,7 +164,7 @@ async function send(
   extraHeaders?: Record<string, string>,
   retried = false,
 ): Promise<Response> {
-  const token = PUBLIC_PATHS.includes(path) ? null : tokenStorage.get()
+  const token = PUBLIC_PATHS.has(path) ? null : tokenStorage.get()
   const headers = new Headers(extraHeaders)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)

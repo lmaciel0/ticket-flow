@@ -42,7 +42,8 @@ type Reply = [status: number, body: unknown]
 
 function requestKey(input: RequestInfo | URL, init?: RequestInit): string {
   // Cookie routes use a relative URL (the site's own origin).
-  const path = new URL(String(input), 'http://localhost').pathname.replace(/^\/api/, '')
+  const url = input instanceof Request ? input.url : input.toString()
+  const path = new URL(url, 'http://localhost').pathname.replace(/^\/api/, '')
   return `${init?.method ?? 'GET'} ${path}`
 }
 
