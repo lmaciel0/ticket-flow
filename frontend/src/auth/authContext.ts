@@ -4,7 +4,7 @@ import type { AuthResponse, User } from '../api/types'
 export interface AuthContextValue {
   /** The logged-in user, or null when nobody is logged in. */
   user: User | null
-  /** True while a stored token is being checked against GET /auth/me. */
+  /** True while the session is being restored from the refresh cookie or checked against GET /auth/me. */
   loading: boolean
   login: (response: AuthResponse) => void
   logout: () => void

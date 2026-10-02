@@ -1,18 +1,21 @@
-import { act, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { tokenStorage } from '../api/client'
 import { mockApi, renderRoutes } from '../test/render'
 import { useAuth } from './authContext'
 import { RequireAuth } from './guards'
 
-const TOKEN_KEY = 'ticketflow.token'
-
 const ana = { id: 1, name: 'Ana', email: 'ana@x.com', role: 'REQUESTER', active: true, demo: true }
 const bruno = { id: 2, name: 'Bruno', email: 'bruno@x.com', role: 'AGENT', active: true, demo: true }
 
 function WhoAmI() {
-  const { user } = useAuth()
-  return <p>Logado como {user?.name}</p>
+  const { user, logout } = useAuth()
+  return (
+    <>
+      <p>Logado como {user?.name}</p>
+      <button onClick={logout}>Sair</button>
+    </>
+  )
 }
 
 const routes = [
@@ -20,39 +23,60 @@ const routes = [
   { path: '/login', element: <p>Tela de login</p> },
 ]
 
-/** What the browser does in THIS tab when another tab writes to localStorage. */
-function anotherTabSetsToken(value: string | null) {
-  if (value === null) {
-    localStorage.removeItem(TOKEN_KEY)
-  } else {
-    localStorage.setItem(TOKEN_KEY, value)
-  }
-  window.dispatchEvent(new StorageEvent('storage', { key: TOKEN_KEY, newValue: value }))
+/** What another tab of the app sends on the shared channel. */
+function anotherTabSays(type: 'login' | 'logout') {
+  const channel = new BroadcastChannel('ticketflow-auth')
+  channel.postMessage({ type })
+  channel.close()
 }
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('AuthProvider keeps every tab on the session that its requests use', () => {
+describe('AuthProvider', () => {
+  it('restores the session from the refresh cookie when the page opens', async () => {
+    mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
+
+    renderRoutes(routes, '/tickets')
+
+    expect(await screen.findByText('Logado como Ana')).toBeInTheDocument()
+    expect(tokenStorage.get()).toBe('token-ana')
+  })
+
+  it('shows the login page when there is no session to restore', async () => {
+    mockApi({})
+
+    renderRoutes(routes, '/tickets')
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+  })
+
+  it('ends the session on the server when logging out', async () => {
+    const fetchMock = mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
+    const { user } = renderRoutes(routes, '/tickets')
+    await user.click(await screen.findByRole('button', { name: 'Sair' }))
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/auth/logout')).toBe(true)
+    expect(tokenStorage.get()).toBeNull()
+  })
+
   it('follows a login with another account in another tab', async () => {
-    tokenStorage.set('token-ana')
-    mockApi({ 'GET /auth/me': [200, ana] })
+    mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
     renderRoutes(routes, '/tickets')
     expect(await screen.findByText('Logado como Ana')).toBeInTheDocument()
 
-    mockApi({ 'GET /auth/me': [200, bruno] })
-    act(() => anotherTabSetsToken('token-bruno'))
+    mockApi({ 'POST /auth/refresh': [200, { token: 'token-bruno', user: bruno }] })
+    anotherTabSays('login')
 
     expect(await screen.findByText('Logado como Bruno')).toBeInTheDocument()
   })
 
-  // rewritten in Task 5
-  it.skip('follows a logout in another tab', async () => {
-    tokenStorage.set('token-ana')
-    mockApi({ 'GET /auth/me': [200, ana] })
+  it('follows a logout in another tab', async () => {
+    mockApi({ 'POST /auth/refresh': [200, { token: 'token-ana', user: ana }] })
     renderRoutes(routes, '/tickets')
     expect(await screen.findByText('Logado como Ana')).toBeInTheDocument()
 
-    act(() => anotherTabSetsToken(null))
+    anotherTabSays('logout')
 
     expect(await screen.findByText('Tela de login')).toBeInTheDocument()
   })
