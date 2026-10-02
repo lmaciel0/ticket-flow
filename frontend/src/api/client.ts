@@ -74,9 +74,16 @@ export function setUnauthorizedHandler(handler: () => void) {
 let refreshing: Promise<AuthResponse | null> | null = null
 
 /**
+ * Pauses between attempts while the API is unreachable (about 90 s in total): the free Render API takes about
+ * 65 s to wake up and, meanwhile, the site proxy answers 502/503/504 or the fetch fails. Exported so tests can
+ * advance fake timers by exactly this much.
+ */
+export const REFRESH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 15000, 15000, 15000, 15000]
+
+/**
  * Gets a new access token from the refresh cookie. Requests that fail together share one renewal, and tabs
  * take turns (Web Locks): two renewals with the same cookie would look like a stolen token to the API.
- * Null means there is no session (no cookie, expired, or the server could not be reached).
+ * Null means there is no session: no cookie, expired, or the API stayed unreachable after the retries.
  */
 export function refreshSession(): Promise<AuthResponse | null> {
   refreshing ??= withRefreshLock(renew).finally(() => {
@@ -89,17 +96,30 @@ function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
   return 'locks' in navigator ? navigator.locks.request('ticketflow-refresh', task) : task()
 }
 
+/** Only a network failure or a 5xx may be a server that is waking up; any other refusal (401, 403...) is "no session". */
 async function renew(): Promise<AuthResponse | null> {
-  let response: Response
-  try {
-    response = await fetch(urlFor('/auth/refresh'), { method: 'POST' })
-  } catch {
-    return null
+  for (let attempt = 0; ; attempt++) {
+    let response: Response | null = null
+    try {
+      response = await fetch(urlFor('/auth/refresh'), { method: 'POST' })
+    } catch {
+      // network error: transient
+    }
+    if (response?.ok) {
+      return readSession(response)
+    }
+    if (response && response.status < 500) {
+      tokenStorage.clear()
+      return null
+    }
+    if (attempt >= REFRESH_RETRY_DELAYS_MS.length) {
+      return null
+    }
+    await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAYS_MS[attempt]))
   }
-  if (!response.ok) {
-    tokenStorage.clear()
-    return null
-  }
+}
+
+async function readSession(response: Response): Promise<AuthResponse | null> {
   let session: AuthResponse
   try {
     session = (await response.json()) as AuthResponse

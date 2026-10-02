@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, refreshSession, setUnauthorizedHandler, tokenStorage } from './client'
+import { api, ApiError, REFRESH_RETRY_DELAYS_MS, refreshSession, setUnauthorizedHandler, tokenStorage } from './client'
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -257,10 +257,95 @@ describe('api client', () => {
     expect(tokenStorage.get()).toBeNull()
   })
 
-  it('treats an unreachable server as no session', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')))
+  describe('while the API wakes up (the site proxy answers 5xx or the fetch fails)', () => {
+    const session = { token: 'new', user: { id: 1 } }
 
-    expect(await refreshSession()).toBeNull()
+    afterEach(() => vi.useRealTimers())
+
+    it('retries after a 503 and restores the session', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response('<html>starting</html>', { status: 503 }))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await pending).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(tokenStorage.get()).toBe('new')
+    })
+
+    it('retries after a network error and restores the session', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await pending).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps one renewal in flight while it waits: every caller shares it', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response('', { status: 502 }))
+        .mockResolvedValueOnce(jsonResponse(200, session))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const first = refreshSession()
+      const second = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS[0])
+
+      expect(await first).toEqual(session)
+      expect(await second).toEqual(session)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not retry a 401: that is no session', async () => {
+      const fetchMock = mockFetch(jsonResponse(401, { status: 401 }))
+      tokenStorage.set('old')
+
+      expect(await refreshSession()).toBeNull()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(tokenStorage.get()).toBeNull()
+    })
+
+    it('does not retry a 403 either', async () => {
+      const fetchMock = mockFetch(jsonResponse(403, { status: 403 }))
+
+      expect(await refreshSession()).toBeNull()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    it('gives up with no session once the retry budget is spent', async () => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response('', { status: 503 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const pending = refreshSession()
+      await vi.advanceTimersByTimeAsync(REFRESH_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0))
+
+      expect(await pending).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(REFRESH_RETRY_DELAYS_MS.length + 1)
+    })
+
+    it('waits about a minute and a half before giving up', () => {
+      const total = REFRESH_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0)
+
+      expect(total).toBeGreaterThanOrEqual(85_000)
+      expect(total).toBeLessThanOrEqual(95_000)
+    })
   })
 
   it('treats a successful refresh answer that is not JSON as no session', async () => {
