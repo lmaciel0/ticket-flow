@@ -43,7 +43,7 @@ Por isso o desenho separa os dois caminhos: **login e cadastro vão direto à AP
 | Cookie | `tf_refresh`, `HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age` igual ao tempo que falta para a família vencer | `Path=/api/auth`: o cookie só viaja para as rotas que o usam. `Strict` impede CSRF. |
 | `Secure` em desenvolvimento | Configurável (`app.auth.refresh-cookie.secure`, padrão `true`); o docker compose usa `false` | Chrome e Firefox aceitam `Secure` em `http://localhost`, o Safari não. |
 | Rate limiting das rotas de cookie | Nenhum | Pelo repasse, o IP é o mesmo para todos (seção 2). Adivinhar um segredo de 256 bits é inviável. |
-| Usuário desativado ou com papel trocado | O refresh falha (401) e revoga a família; o access token novo sai sempre com o papel atual | Mesma regra que o `SecurityConfig` já aplica a cada requisição. |
+| Usuário desativado ou com papel trocado | Desativado: o refresh falha (401) e revoga a família. Papel trocado: o refresh funciona e o access token novo sai com o papel atual | O `SecurityConfig` já derruba na hora o access token com o papel antigo; obrigar um novo login por causa de uma promoção não acrescenta segurança. |
 | Armazenamento | Duas tabelas novas: `refresh_tokens` e `session_handoffs` (migration V10), com `ON DELETE CASCADE` para `users` | O reset da demo (`TRUNCATE users CASCADE`) leva as sessões junto. |
 | Refresh ao mesmo tempo no frontend | Uma única chamada de refresh por aba (promessa compartilhada) e uma por vez entre abas (`navigator.locks`) | Evita que várias chamadas com 401 disparem vários refreshes e caiam no reuso. |
 | Sincronização entre abas | `BroadcastChannel('ticketflow-auth')` com mensagens `login` e `logout` | O token saiu do `localStorage`, então o evento `storage` usado hoje deixa de existir. |
@@ -58,7 +58,7 @@ CREATE TABLE refresh_tokens (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     family_id   UUID        NOT NULL,
-    token_hash  CHAR(64)    NOT NULL UNIQUE,
+    token_hash  VARCHAR(64) NOT NULL UNIQUE,
     created_at  TIMESTAMPTZ NOT NULL,
     expires_at  TIMESTAMPTZ NOT NULL,
     used_at     TIMESTAMPTZ,
@@ -70,7 +70,7 @@ CREATE INDEX refresh_tokens_user_idx ON refresh_tokens (user_id);
 CREATE TABLE session_handoffs (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    code_hash   CHAR(64)    NOT NULL UNIQUE,
+    code_hash   VARCHAR(64) NOT NULL UNIQUE,
     expires_at  TIMESTAMPTZ NOT NULL
 );
 ```
@@ -86,7 +86,7 @@ O `DemoDataSeeder` não muda: o `TRUNCATE ... users CASCADE` alcança as duas ta
     - não existe, vencido ou família revogada → `401`;
     - já usado há mais de 30 s → revoga a família e `401`;
     - já usado há até 30 s → devolve só um access token novo (`rotated = null`), sem novo refresh token;
-    - usuário inexistente, inativo → revoga a família e `401`;
+    - usuário inativo → revoga a família e `401` (um usuário apagado leva os tokens junto, pelo `ON DELETE CASCADE`);
     - caso normal → marca `used_at`, grava o sucessor na mesma família com a mesma `expires_at` e devolve o access token e o sucessor.
   - `void logout(String token)`: revoga a família do token, se ele existir; nada acontece se não existir (logout é idempotente).
 - **`RefreshCookie`**: monta o `ResponseCookie` (`tf_refresh`, `HttpOnly`, `Secure` configurável, `SameSite=Strict`, `Path=/api/auth`, `Max-Age` até a expiração da família) e o cookie de apagar (`Max-Age=0`).
@@ -107,7 +107,7 @@ O `401` do refresh segue o ProblemDetail da API ("Sessão expirada. Entre novame
 - **`render.yaml`**: a regra `/api/*` do #23 fica, com o comentário atualizado (agora só as rotas de cookie a usam).
 - **`frontend/vite.config.ts`**: `server.proxy` com `/api` → `http://localhost:8080`.
 - **`frontend/nginx.conf`**: `location /api/ { proxy_pass http://backend:8080; }` com os headers `Host` e `X-Forwarded-For`.
-- **`docker-compose.yml`**: o backend recebe `APP_AUTH_REFRESH_COOKIE_SECURE=false`.
+- **`docker-compose.yml`**: o backend recebe `APP_AUTH_REFRESHCOOKIE_SECURE=false` (nas variáveis de ambiente, o Spring Boot tira o hífen de `refresh-cookie`).
 
 ### 4.4. Frontend
 
@@ -132,10 +132,10 @@ O `401` do refresh segue o ProblemDetail da API ("Sessão expirada. Entre novame
   - refresh sem cookie ou com cookie desconhecido dá 401 e apaga o cookie;
   - reusar um token rodado há 10 s devolve 200 sem `Set-Cookie`; há 31 s dá 401 e o token mais novo da família também deixa de funcionar;
   - família vencida (relógio 7 dias à frente) dá 401;
-  - usuário desativado ou com papel trocado: 401;
-  - o access token sai com o papel atual;
+  - usuário desativado: 401;
+  - usuário com papel trocado: 200, e o access token sai com o papel atual;
   - logout revoga a família e apaga o cookie; logout sem cookie dá 204;
-  - o access token vence em 15 minutos (relógio 15 min à frente: 401 em `/api/auth/me`).
+  - o access token vence em 15 minutos (`exp - iat` do JWT, lido com o `JwtDecoder`: o decoder usa o relógio real, então avançar o relógio do teste não o faz vencer).
 - **`RefreshTokenServiceTest`** ou equivalente: o hash guardado não é o valor em claro.
 - **`RateLimitConfigTest`** / testes de configuração: `app.jwt.ttl` é 15 min e o bloco `app.auth` tem os valores padrão.
 - **Frontend**:
